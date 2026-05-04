@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.2.0"
+version = "0.2.1"
 description = "SubLodeX — Claude Code web UI as a desktop app"
 authors = ["Amani Andrea aka The Pirate Pinperepette"]
 license = "MIT"
