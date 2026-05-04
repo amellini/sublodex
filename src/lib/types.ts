@@ -189,6 +189,10 @@ export type Project = {
   path: string;
   instructions: string;
   remote?: RemoteConfig;
+  /** Ultimo timestamp (epoch ms) in cui il progetto è stato reso attivo via
+   *  ProjectSwitcher / SettingsModal. Usato per ordinare la lista dei recenti.
+   *  Opzionale: progetti pre-feature non lo hanno e ricadono in fondo. */
+  lastUsedAt?: number;
 };
 
 export type Settings = {

@@ -50,3 +50,19 @@ export function activeProject(s: Settings | null): Project | null {
   if (!s) return null;
   return s.projects.find((p) => p.id === s.activeId) ?? s.projects[0] ?? null;
 }
+
+/** Cambia il progetto attivo e bumpa `lastUsedAt` sul progetto scelto.
+ *  Centralizza la persistenza: ProjectSwitcher e SettingsModal devono
+ *  passare di qui per garantire che l'ordine "recenti" si mantenga. */
+export async function setActiveProject(id: string): Promise<boolean> {
+  const cur = useSettings.getState().settings;
+  if (!cur) return false;
+  const next: Settings = {
+    ...cur,
+    activeId: id,
+    projects: cur.projects.map((p) =>
+      p.id === id ? { ...p, lastUsedAt: Date.now() } : p,
+    ),
+  };
+  return useSettings.getState().save(next);
+}

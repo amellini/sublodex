@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../lib/store';
 import { useUI } from '../lib/ui';
 import { useSettings, activeProject } from '../lib/settings';
+import { fuzzyScore } from '../lib/fuzzy';
 
 type FileNode = {
   name: string;
@@ -21,32 +22,6 @@ function flattenFiles(nodes: FileNode[]): string[] {
   };
   walk(nodes);
   return out;
-}
-
-/** Match fuzzy: ogni char di `needle` deve apparire nell'haystack in ordine.
- *  Score = penalizza distanza fra match consecutivi e premia match nel basename.
- *  Ritorna null se nessun match. */
-function fuzzyScore(needle: string, hay: string): number | null {
-  if (!needle) return 0;
-  const n = needle.toLowerCase();
-  const h = hay.toLowerCase();
-  let i = 0;
-  let lastIdx = -1;
-  let score = 0;
-  for (const ch of n) {
-    const idx = h.indexOf(ch, lastIdx + 1);
-    if (idx < 0) return null;
-    if (lastIdx === -1) score += idx;            // penalità "salto iniziale"
-    else score += (idx - lastIdx - 1) * 2;       // penalità gap fra match
-    lastIdx = idx;
-    i++;
-  }
-  // bonus se l'ultima parte (basename) contiene tutti i char insieme
-  const base = h.split('/').pop() ?? h;
-  if (base.includes(n)) score -= 30;
-  // penalità per file molto lunghi (cwd-relative)
-  score += Math.floor(hay.length / 20);
-  return score;
 }
 
 export function QuickOpen() {

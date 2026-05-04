@@ -9,6 +9,7 @@ import { Logo } from './components/Logo';
 import { SettingsModal } from './components/Settings';
 import { ThemePicker } from './components/ThemePicker';
 import { QuickOpen } from './components/QuickOpen';
+import { ProjectSwitcher } from './components/ProjectSwitcher';
 import { Extensions } from './components/Extensions';
 import { useScopedTheme } from './components/ThemeApplier';
 import { conversationToMarkdown, downloadMarkdown } from './lib/exportConversation';
@@ -53,6 +54,7 @@ export default function App() {
   // Doppio shortcut: ⌘P per chi viene da VS Code, ⌘K come fallback se l'OS
   // intercetta ⌘P (Print). Inoltre c'è un bottone "find" nell'header.
   const openQuickOpen = useUI((s) => s.openQuickOpen);
+  const openProjectSwitcher = useUI((s) => s.openProjectSwitcher);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
@@ -66,6 +68,23 @@ export default function App() {
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [openQuickOpen]);
+
+  // ⌘O / Ctrl+O → ProjectSwitcher. Capture phase + preventDefault per
+  // bypassare l'azione browser "open file" e l'eventuale handler della
+  // WebView Tauri.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.shiftKey || e.altKey) return;
+      if (e.key === 'o' || e.key === 'O') {
+        e.preventDefault();
+        e.stopPropagation();
+        openProjectSwitcher();
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [openProjectSwitcher]);
 
   // Quando il progetto attivo o la session cambiano, carica la conversazione
   // corrispondente. Se la session su localStorage non esiste più sul disco,
@@ -120,10 +139,11 @@ export default function App() {
           <button
             className="header__project"
             title={active.remote ? `${active.name} on ${active.remote.user ? active.remote.user + '@' : ''}${active.remote.host}:${active.path}` : active.path}
-            onClick={openSettings}
+            onClick={openProjectSwitcher}
           >
             {active.name}
             {active.remote && <span className="header__project-ssh">ssh</span>}
+            <span className="header__project-chevron" aria-hidden="true"> ▾</span>
           </button>
         )}
         {sessionId && (
@@ -198,6 +218,7 @@ export default function App() {
       {themePickerOpen && <ThemePicker onClose={closeThemePicker} />}
       {extensionsOpen && <Extensions onClose={closeExtensions} />}
       <QuickOpen />
+      <ProjectSwitcher />
     </div>
   );
 }

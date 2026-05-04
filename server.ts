@@ -1250,7 +1250,7 @@ async function runClaudeRemote(
     '-p', shellQuote(prompt),
     '--output-format', 'stream-json',
     '--verbose',
-    '--permission-mode', permissionMode || PERMISSION_MODE,
+    '--permission-mode', permissionMode ? shellQuote(permissionMode) : PERMISSION_MODE,
   ];
   if (model) flags.push('--model', shellQuote(model));
   if (sessionId) flags.push('--resume', shellQuote(sessionId));

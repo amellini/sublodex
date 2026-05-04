@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSettings } from '../lib/settings';
 import { useStore, type StreamSpeed } from '../lib/store';
 import { deleteConversation } from '../lib/conversation';
+import { cancel } from '../lib/ws';
 import { EyeIcon, EyeOffIcon, FolderIcon } from './icons';
 import type { Project, RemoteConfig } from '../lib/types';
 
@@ -116,6 +117,15 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
   const saveAll = async () => {
     const oldActive = remote?.activeId;
+    // Mitigazione UI per issue #2: se Claude sta streamando e l'utente
+    // sta per cambiare progetto, chiediamo conferma e interrompiamo lo
+    // stream prima di switchare. Senza questo le route /api/file|tree|git/*
+    // continuerebbero a leggere dal singleton settings post-switch.
+    if (oldActive && oldActive !== activeId && useStore.getState().isStreaming) {
+      const ok = confirm('Claude is streaming — switching project now will interrupt it. Continue?');
+      if (!ok) return;
+      cancel();
+    }
     const ok = await save({ projects, activeId });
     if (!ok) return;
     if (oldActive && oldActive !== activeId) {

@@ -12,6 +12,8 @@ type UIState = {
   pendingExpandCommand?: string;
   /** quick-open modal (fuzzy finder file, ⌘P) */
   quickOpenOpen: boolean;
+  /** project-switcher modal (fuzzy finder progetti, ⌘O) */
+  projectSwitcherOpen: boolean;
   /** true/false dopo il primo poll di /api/git/status per il progetto attivo;
    *  null = non ancora controllato. Usato per nascondere il tab git se non
    *  serve. Refreshato dal GitPanel ad ogni mount/refresh. */
@@ -37,6 +39,8 @@ type UIState = {
   closeThemePicker: () => void;
   openQuickOpen: () => void;
   closeQuickOpen: () => void;
+  openProjectSwitcher: () => void;
+  closeProjectSwitcher: () => void;
 };
 
 export const useUI = create<UIState>((set) => ({
@@ -59,6 +63,9 @@ export const useUI = create<UIState>((set) => ({
   quickOpenOpen: false,
   openQuickOpen: () => set({ quickOpenOpen: true }),
   closeQuickOpen: () => set({ quickOpenOpen: false }),
+  projectSwitcherOpen: false,
+  openProjectSwitcher: () => set({ projectSwitcherOpen: true }),
+  closeProjectSwitcher: () => set({ projectSwitcherOpen: false }),
   isGitRepo: null,
   setIsGitRepo: (v) => set({ isGitRepo: v }),
   activeSessionByProject: (() => {

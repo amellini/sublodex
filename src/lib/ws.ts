@@ -5,17 +5,12 @@ import { useUI } from './ui';
 import { saveConversation } from './conversation';
 import { wsTokenQuery } from './auth';
 
-function persistCurrentConversation(): void {
-  const settings = useSettings.getState().settings;
-  const active = activeProject(settings);
-  if (!active) return;
+// projectId/sessionFsId vengono catturati a `sendPrompt` e passati qui:
+// se l'utente cambia progetto durante lo stream, vogliamo persistere la
+// risposta nel progetto da cui è partita, non in quello attivo al `done`.
+function persistCurrentConversation(projectId: string, sessionFsId: string | undefined): void {
   const s = useStore.getState();
-  // fs-id della sessione corrente (= filename `<id>.json` lato server).
-  // Senza questo, il PUT cade su "most recent by mtime" e con più sessioni
-  // attive scrive nel file sbagliato → al reload `--resume` apre la
-  // sessione sbagliata o non trova nulla.
-  const sessionFsId = useUI.getState().activeSessionByProject[active.id];
-  void saveConversation(active.id, {
+  void saveConversation(projectId, {
     messages: s.messages,
     sessionId: s.sessionId,
     totalCost: s.totalCost,
@@ -31,6 +26,11 @@ let reconnectTimer: number | null = null;
  *  volta che `onopen` parte (= nuova connessione stabilita). Usato per
  *  backoff esponenziale con jitter. */
 let reconnectAttempts = 0;
+/** Snapshot di progetto + sessione catturato a `sendPrompt`. Necessario per
+ *  evitare che uno switch di progetto mid-stream faccia persistere la
+ *  risposta nel progetto sbagliato (issue #2). */
+let _pendingProjectId: string | null = null;
+let _pendingSessionFsId: string | undefined = undefined;
 
 /** Backoff esponenziale con jitter: 1s, 2s, 4s, 8s, 16s, max 30s.
  *  Jitter ±25% per evitare che N client riprovino in sincrono dopo
@@ -63,12 +63,16 @@ export function connect(): void {
       if (msg.type === 'event') store.ingestEvent(msg.event);
       else if (msg.type === 'done') {
         store.setStreaming(false);
-        persistCurrentConversation();
+        if (_pendingProjectId) persistCurrentConversation(_pendingProjectId, _pendingSessionFsId);
+        _pendingProjectId = null;
+        _pendingSessionFsId = undefined;
       }
       else if (msg.type === 'error') {
         store.setError(msg.error);
         store.setStreaming(false);
-        persistCurrentConversation();
+        if (_pendingProjectId) persistCurrentConversation(_pendingProjectId, _pendingSessionFsId);
+        _pendingProjectId = null;
+        _pendingSessionFsId = undefined;
       }
     } catch (err) {
       console.error('ws parse error:', err);
@@ -87,6 +91,10 @@ export function connect(): void {
       // Non persistiamo: la conversazione corrente è incompleta. Sarà
       // persistita normalmente al prossimo `done`.
     }
+    // Stream interrotto a metà → invalidiamo le pending: al prossimo
+    // `sendPrompt` verranno ricatturate dal progetto allora attivo.
+    _pendingProjectId = null;
+    _pendingSessionFsId = undefined;
     if (reconnectTimer !== null) return;
     const delay = nextReconnectDelayMs();
     reconnectAttempts += 1;
@@ -120,10 +128,23 @@ export function sendPrompt(prompt: string): void {
   appendUserMessage(prompt);
   setStreaming(true);
   setError(undefined);
+  // Snapshot del progetto + sessione attivi adesso: se l'utente li cambia
+  // prima del `done`, vogliamo persistere comunque qui (issue #2).
+  const settings = useSettings.getState().settings;
+  const active = activeProject(settings);
+  if (active) {
+    _pendingProjectId = active.id;
+    _pendingSessionFsId = useUI.getState().activeSessionByProject[active.id];
+  } else {
+    _pendingProjectId = null;
+    _pendingSessionFsId = undefined;
+  }
   const ok = rawSend({ type: 'send', prompt, sessionId, model, permissionMode });
   if (!ok) {
     setError('server not ready — try again in a moment');
     setStreaming(false);
+    _pendingProjectId = null;
+    _pendingSessionFsId = undefined;
   }
 }
 
