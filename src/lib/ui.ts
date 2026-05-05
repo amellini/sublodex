@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type SidebarMode = 'commands' | 'files' | 'git';
+export type SidebarMode = 'files' | 'git';
 
 type UIState = {
   settingsOpen: boolean;
@@ -46,13 +46,13 @@ type UIState = {
 export const useUI = create<UIState>((set) => ({
   settingsOpen: false,
   sidebarOpen: false,
-  sidebarMode: 'commands',
+  sidebarMode: 'files',
   terminalOpen: false,
   openSettings: () => set({ settingsOpen: true }),
   closeSettings: () => set({ settingsOpen: false }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   openSidebarWith: (commandId) =>
-    set({ sidebarOpen: true, sidebarMode: 'commands', pendingExpandCommand: commandId }),
+    set({ sidebarOpen: true, sidebarMode: 'files', pendingExpandCommand: commandId }),
   setSidebarMode: (mode) => set({ sidebarMode: mode }),
   openFilesPanel: () => set({ sidebarOpen: true, sidebarMode: 'files' }),
   clearPendingExpand: () => set({ pendingExpandCommand: undefined }),

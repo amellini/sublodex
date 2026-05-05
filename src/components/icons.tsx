@@ -2,6 +2,28 @@
 
 type IconProps = { size?: number; className?: string };
 
+export function TrashIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+    >
+      <path d="M2.5 4h11" />
+      <path d="M6 4V2.5A1 1 0 0 1 7 1.5h2A1 1 0 0 1 10 2.5V4" />
+      <path d="M3.75 4 4.5 13a1.5 1.5 0 0 0 1.5 1.4h4a1.5 1.5 0 0 0 1.5-1.4L12.25 4" />
+      <path d="M6.75 7v4.5M9.25 7v4.5" />
+    </svg>
+  );
+}
+
 export function FolderIcon({ size = 16, className }: IconProps) {
   return (
     <svg

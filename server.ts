@@ -2090,26 +2090,50 @@ const server = Bun.serve<WsData, {}>({
     }
 
     if (url.pathname === '/api/pick-folder' && req.method === 'POST') {
-      if (process.platform !== 'darwin') {
-        return Response.json(
-          { error: 'native picker is macOS only — paste the path manually' },
-          { status: 501 },
-        );
+      let cmd: string;
+      let args: string[];
+      if (process.platform === 'darwin') {
+        cmd = 'osascript';
+        args = ['-e', 'POSIX path of (choose folder with prompt "Choose the project folder")'];
+      } else if (process.platform === 'win32') {
+        // PowerShell FolderBrowserDialog. STA mode is required for WinForms.
+        // A topmost dummy form is parented to the dialog so it doesn't get
+        // hidden behind the main app window.
+        const ps = [
+          "Add-Type -AssemblyName System.Windows.Forms;",
+          "$f = New-Object System.Windows.Forms.FolderBrowserDialog;",
+          "$f.Description = 'Choose the project folder';",
+          "$f.ShowNewFolderButton = $true;",
+          "$top = New-Object System.Windows.Forms.Form;",
+          "$top.TopMost = $true;",
+          "$r = $f.ShowDialog($top);",
+          "$top.Dispose();",
+          "if ($r -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.SelectedPath }",
+        ].join(' ');
+        cmd = 'powershell.exe';
+        args = ['-NoProfile', '-STA', '-Command', ps];
+      } else {
+        // Linux / others: try zenity (GNOME) — falls through to error if missing.
+        cmd = 'zenity';
+        args = ['--file-selection', '--directory', '--title=Choose the project folder'];
       }
       return new Promise<Response>((resolve) => {
-        const proc = spawn('osascript', [
-          '-e',
-          'POSIX path of (choose folder with prompt "Choose the project folder")',
-        ]);
+        const proc = spawn(cmd, args);
         let out = '';
         proc.stdout.on('data', (c: Buffer) => { out += c.toString(); });
         proc.on('close', (code) => {
-          if (code === 0) {
-            const picked = out.trim().replace(/\/$/, '');
+          const picked = out.trim().replace(/[\/\\]$/, '');
+          if (code === 0 && picked) {
             resolve(Response.json({ path: picked }));
           } else {
             resolve(Response.json({ canceled: true }));
           }
+        });
+        proc.on('error', (e) => {
+          resolve(Response.json(
+            { error: `folder picker failed: ${e.message}` },
+            { status: 501 },
+          ));
         });
       });
     }

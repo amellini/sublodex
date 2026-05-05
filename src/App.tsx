@@ -11,6 +11,7 @@ import { ThemePicker } from './components/ThemePicker';
 import { QuickOpen } from './components/QuickOpen';
 import { ProjectSwitcher } from './components/ProjectSwitcher';
 import { Extensions } from './components/Extensions';
+import { HeaderCommandPalette } from './components/HeaderCommandPalette';
 import { useScopedTheme } from './components/ThemeApplier';
 import { conversationToMarkdown, downloadMarkdown } from './lib/exportConversation';
 
@@ -151,6 +152,7 @@ export default function App() {
         )}
         {isStreaming && <span className="header__working">claude is working…</span>}
         <span className="header__spacer" />
+        <HeaderCommandPalette />
         {lastError && <span className="header__error" title={lastError}>error</span>}
         {messageCount > 0 && (
           <button

@@ -3,7 +3,7 @@ import { useSettings } from '../lib/settings';
 import { useStore, type StreamSpeed } from '../lib/store';
 import { deleteConversation } from '../lib/conversation';
 import { cancel } from '../lib/ws';
-import { EyeIcon, EyeOffIcon, FolderIcon } from './icons';
+import { EyeIcon, EyeOffIcon, FolderIcon, TrashIcon } from './icons';
 import type { Project, RemoteConfig } from '../lib/types';
 
 /** Sentinel scambiato col server quando l'utente non vuole modificare la
@@ -95,7 +95,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       const r = await fetch('/api/pick-folder', { method: 'POST' });
       const j = await r.json();
       if (j.path) {
-        const seg = (j.path as string).split('/').filter(Boolean).pop() ?? '';
+        const seg = (j.path as string).split(/[\/\\]/).filter(Boolean).pop() ?? '';
         if (selected) {
           const patch: Partial<Project> = { path: j.path };
           if (
@@ -140,8 +140,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       JSON.stringify(remote.projects) !== JSON.stringify(projects));
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-backdrop">
+      <div className="modal modal--wide">
         <div className="modal__head">
           <h2 className="modal__title">projects</h2>
           <button className="header__btn" onClick={onClose}>✕</button>
@@ -154,16 +154,31 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             <div className="settings-list__head">projects</div>
             <div className="settings-list__items">
               {projects.map((p) => (
-                <button
+                <div
                   key={p.id}
                   className={`settings-item ${selectedId === p.id ? 'settings-item--selected' : ''}`}
                   onClick={() => setSelectedId(p.id)}
                   title={p.path}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedId(p.id); }}
                 >
                   <span className={`settings-item__dot ${activeId === p.id ? 'settings-item__dot--on' : ''}`} />
                   <span className="settings-item__name">{p.name || '(no name)'}</span>
                   <span className="settings-item__path">{shortPath(p.path)}</span>
-                </button>
+                  <button
+                    type="button"
+                    className="settings-item__del"
+                    title="delete project"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedId(p.id);
+                      requestDelete(p.id);
+                    }}
+                  >
+                    <TrashIcon size={16} />
+                  </button>
+                </div>
               ))}
             </div>
             <button className="settings-list__new" onClick={addNew}>
@@ -194,12 +209,6 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                   {wipedFlash === selected.id && (
                     <span className="settings-detail__flash">conversation deleted</span>
                   )}
-                  <button
-                    className="header__btn header__btn--danger"
-                    onClick={() => requestDelete(selected.id)}
-                  >
-                    delete project
-                  </button>
                 </div>
 
                 {confirmDelete === selected.id && (

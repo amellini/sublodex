@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react';
-import { CommandsList } from './CommandsList';
 import { FileTree } from './FileTree';
 import { GitPanel } from './GitPanel';
 import { useUI } from '../lib/ui';
@@ -23,12 +22,6 @@ export function SidebarLeft() {
       <div className="sidebar__head">
         <div className="sidebar__tabs">
           <button
-            className={`sidebar__tab ${mode === 'commands' ? 'sidebar__tab--active' : ''}`}
-            onClick={() => setMode('commands')}
-          >
-            commands
-          </button>
-          <button
             className={`sidebar__tab ${mode === 'files' ? 'sidebar__tab--active' : ''}`}
             onClick={() => setMode('files')}
           >
@@ -47,7 +40,6 @@ export function SidebarLeft() {
           ‹
         </button>
       </div>
-      {mode === 'commands' && <CommandsList />}
       {mode === 'files' && <FileTree />}
       {mode === 'git' && <GitPanel />}
       <div className="sidebar__foot" title="SubLodeX — by Amani Andrea aka The Pirate Pinperepette">
