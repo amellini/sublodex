@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type SidebarMode = 'files' | 'git';
+export type SidebarMode = 'sessions' | 'files' | 'git';
 
 type UIState = {
   settingsOpen: boolean;
@@ -46,7 +46,7 @@ type UIState = {
 export const useUI = create<UIState>((set) => ({
   settingsOpen: false,
   sidebarOpen: false,
-  sidebarMode: 'files',
+  sidebarMode: 'sessions',
   terminalOpen: false,
   openSettings: () => set({ settingsOpen: true }),
   closeSettings: () => set({ settingsOpen: false }),

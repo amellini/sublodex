@@ -252,6 +252,7 @@ async function migrateLegacyConversation(projectId: string): Promise<void> {
  *  (counter messaggi, prima riga, mtime) senza leggere tutto in memoria. */
 async function listSessions(projectId: string): Promise<Array<{
   id: string;
+  name?: string;
   createdAt: number;
   updatedAt: number;
   messageCount: number;
@@ -274,6 +275,7 @@ async function listSessions(projectId: string): Promise<Array<{
       const data = JSON.parse(raw);
       const messages = Array.isArray(data.messages) ? data.messages : [];
       const messageCount = messages.length;
+      const name = typeof data.name === 'string' && data.name.trim() ? data.name : undefined;
       // summary: primo blocco text del primo messaggio user, se c'è
       let summary = '';
       for (const m of messages) {
@@ -288,6 +290,7 @@ async function listSessions(projectId: string): Promise<Array<{
       }
       out.push({
         id,
+        name,
         createdAt: st.birthtimeMs ?? st.mtimeMs,
         updatedAt: st.mtimeMs,
         messageCount,
@@ -2259,8 +2262,43 @@ const server = Bun.serve<WsData, {}>({
       const body = await req.text();
       const file = sessionFilePath(projectId, sid);
       await mkdir(path.dirname(file), { recursive: true });
+      // Preserva il `name` user-editable se non è incluso nello snapshot:
+      // ogni turno riscrive il file ma non ha motivo di toccare il nome.
+      try {
+        const incoming = JSON.parse(body);
+        if (typeof incoming.name !== 'string') {
+          try {
+            const prev = JSON.parse(await readFile(file, 'utf8'));
+            if (typeof prev.name === 'string') {
+              incoming.name = prev.name;
+              await writeFile(file, JSON.stringify(incoming, null, 2), 'utf8');
+              return new Response('ok');
+            }
+          } catch { /* file mancante o corrotto: scrivo body così com'è */ }
+        }
+      } catch { /* body non-JSON: scrivo raw */ }
       await writeFile(file, body, 'utf8');
       return new Response('ok');
+    }
+
+    if (url.pathname === '/api/conversation/sessions' && req.method === 'PATCH') {
+      const projectId = url.searchParams.get('projectId');
+      const sessionId = url.searchParams.get('sessionId');
+      if (!projectId || !sessionId) return new Response('missing params', { status: 400 });
+      if (!isValidProjectId(projectId)) return new Response('invalid projectId', { status: 400 });
+      let body: { name?: string };
+      try { body = await req.json() as { name?: string }; }
+      catch { return new Response('invalid json', { status: 400 }); }
+      const file = sessionFilePath(projectId, sessionId);
+      try {
+        const raw = await readFile(file, 'utf8');
+        const data = JSON.parse(raw);
+        data.name = (body.name ?? '').trim() || undefined;
+        await writeFile(file, JSON.stringify(data, null, 2), 'utf8');
+        return new Response('ok');
+      } catch (e) {
+        return new Response(`rename failed: ${(e as Error).message}`, { status: 500 });
+      }
     }
 
     if (url.pathname === '/api/conversation' && req.method === 'DELETE') {

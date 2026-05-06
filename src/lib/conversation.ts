@@ -3,6 +3,8 @@ import type { UIMessage } from './types';
 export type ConversationSnapshot = {
   messages: UIMessage[];
   sessionId?: string | null;
+  /** Nome user-editable della sessione (default: "<NomeProgetto> N"). */
+  name?: string;
   totalCost?: number;
   totalInput?: number;
   totalOutput?: number;
@@ -13,6 +15,8 @@ export type ConversationSnapshot = {
 
 export type SessionMeta = {
   id: string;
+  /** Nome user-editable. Se assente, la UI mostra `summary` o data. */
+  name?: string;
   createdAt: number;
   updatedAt: number;
   messageCount: number;
@@ -83,5 +87,25 @@ export async function createNewSession(projectId: string): Promise<string | null
     return j.id ?? null;
   } catch {
     return null;
+  }
+}
+
+export async function renameSession(
+  projectId: string,
+  sessionId: string,
+  name: string,
+): Promise<boolean> {
+  try {
+    const r = await fetch(
+      `/api/conversation/sessions?projectId=${encodeURIComponent(projectId)}&sessionId=${encodeURIComponent(sessionId)}`,
+      {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name }),
+      },
+    );
+    return r.ok;
+  } catch {
+    return false;
   }
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { FileTree } from './FileTree';
 import { GitPanel } from './GitPanel';
+import { SessionsList } from './SessionsList';
 import { useUI } from '../lib/ui';
 import { useScopedTheme } from './ThemeApplier';
 
@@ -12,15 +13,21 @@ export function SidebarLeft() {
   const setMode = useUI((s) => s.setSidebarMode);
   const isGitRepo = useUI((s) => s.isGitRepo);
 
-  // Se siamo sul tab git ma il progetto non è un repo, fallback su files.
+  // Se siamo sul tab git ma il progetto non è un repo, fallback su sessions.
   useEffect(() => {
-    if (mode === 'git' && isGitRepo === false) setMode('files');
+    if (mode === 'git' && isGitRepo === false) setMode('sessions');
   }, [mode, isGitRepo, setMode]);
 
   return (
     <div className="sidebar" ref={ref}>
       <div className="sidebar__head">
         <div className="sidebar__tabs">
+          <button
+            className={`sidebar__tab ${mode === 'sessions' ? 'sidebar__tab--active' : ''}`}
+            onClick={() => setMode('sessions')}
+          >
+            sessions
+          </button>
           <button
             className={`sidebar__tab ${mode === 'files' ? 'sidebar__tab--active' : ''}`}
             onClick={() => setMode('files')}
@@ -40,6 +47,7 @@ export function SidebarLeft() {
           ‹
         </button>
       </div>
+      {mode === 'sessions' && <SessionsList />}
       {mode === 'files' && <FileTree />}
       {mode === 'git' && <GitPanel />}
       <div className="sidebar__foot" title="SubLodeX — by Amani Andrea aka The Pirate Pinperepette">

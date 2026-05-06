@@ -22,6 +22,7 @@ workspace/
 *.swp
 .idea/
 .vscode/
+.vs/
 
 # Claude Code config (mai)
 .claude/

@@ -2,6 +2,26 @@
 
 type IconProps = { size?: number; className?: string };
 
+export function PencilIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+    >
+      <path d="m11 2 3 3-7.5 7.5L3 13l.5-3.5L11 2Z" />
+      <path d="m9.5 3.5 3 3" />
+    </svg>
+  );
+}
+
 export function TrashIcon({ size = 16, className }: IconProps) {
   return (
     <svg
