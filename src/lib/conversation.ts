@@ -66,6 +66,26 @@ export async function deleteConversation(
   } catch { /* best effort */ }
 }
 
+export type ProjectSessionGroup = {
+  projectId: string;
+  projectName: string;
+  lastUsedAt: number;
+  /** max(updatedAt sessioni, lastUsedAt) — usato dal backend per ordinare. */
+  sortKey: number;
+  sessions: SessionMeta[];
+};
+
+export async function listAllSessions(): Promise<ProjectSessionGroup[]> {
+  try {
+    const r = await fetch('/api/conversation/sessions/all');
+    if (!r.ok) return [];
+    const j = (await r.json()) as { groups: ProjectSessionGroup[] };
+    return j.groups ?? [];
+  } catch {
+    return [];
+  }
+}
+
 export async function listSessions(projectId: string): Promise<SessionMeta[]> {
   try {
     const r = await fetch(`/api/conversation/sessions?projectId=${encodeURIComponent(projectId)}`);

@@ -2,6 +2,50 @@
 
 type IconProps = { size?: number; className?: string };
 
+export function MessagesIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+    >
+      <path d="M2 4.25A1.75 1.75 0 0 1 3.75 2.5h8.5A1.75 1.75 0 0 1 14 4.25v5.5A1.75 1.75 0 0 1 12.25 11.5H6.5L3.5 14v-2.5A1.75 1.75 0 0 1 2 9.75v-5.5Z" />
+      <path d="M4.75 5.5h6.5" />
+      <path d="M4.75 8h4.5" />
+    </svg>
+  );
+}
+
+export function GitBranchIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+    >
+      <circle cx="4" cy="3" r="1.5" />
+      <circle cx="4" cy="13" r="1.5" />
+      <circle cx="12" cy="6" r="1.5" />
+      <path d="M4 4.5v7" />
+      <path d="M12 7.5c0 2.5-2 4-4 4H6" />
+    </svg>
+  );
+}
+
 export function PencilIcon({ size = 16, className }: IconProps) {
   return (
     <svg

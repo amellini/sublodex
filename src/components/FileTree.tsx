@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { useStore } from '../lib/store';
+import { useUI } from '../lib/ui';
 import { useSettings, activeProject } from '../lib/settings';
 import { ChevronRight, FolderIcon } from './icons';
 
@@ -183,6 +184,7 @@ const NodeRow = memo(function NodeRow({ node, depth, confirmDelete }: NodeRowPro
   const isOpenInTab = useStore((s) => s.openFiles.includes(node.path));
   const isStreaming = useStore((s) => s.streamingFiles[node.path] !== undefined);
   const setActiveFile = useStore((s) => s.setActiveFile);
+  const openEditorPanel = useUI((s) => s.openEditorPanel);
 
   const isExpanded = useFileTreeUI((s) => s.expanded.has(node.path));
   const isPendingDelete = useFileTreeUI((s) => s.pendingDelete === node.path);
@@ -191,7 +193,7 @@ const NodeRow = memo(function NodeRow({ node, depth, confirmDelete }: NodeRowPro
 
   const onClick = () => {
     if (node.isDir) toggle(node.path);
-    else setActiveFile(node.path);
+    else { setActiveFile(node.path); openEditorPanel(); }
   };
 
   return (

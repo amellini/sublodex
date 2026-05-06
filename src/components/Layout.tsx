@@ -1,48 +1,82 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { useUI } from '../lib/ui';
 import { useSettings, activeProject } from '../lib/settings';
 import { SidebarLeft } from './SidebarLeft';
 import { SidebarRail } from './SidebarRail';
 import { CenterPane } from './CenterPane';
-import { Editor } from './Editor';
+import { RightPanel } from './RightPanel';
+import { RightRail } from './RightRail';
 import { TerminalPane } from './TerminalPane';
 import { useScopedTheme } from './ThemeApplier';
 
 export function Layout() {
   const sidebarOpen = useUI((s) => s.sidebarOpen);
+  const rightPanelMode = useUI((s) => s.rightPanelMode);
   const terminalOpen = useUI((s) => s.terminalOpen);
   const toggleTerminal = useUI((s) => s.toggleTerminal);
 
   const settings = useSettings((s) => s.settings);
   const active = activeProject(settings);
 
-  const top = sidebarOpen ? (
-    <PanelGroup direction="horizontal" autoSaveId="cw-3col" className="layout">
-      <Panel defaultSize={20} minSize={15} maxSize={36} className="layout__pane">
-        <SidebarLeft />
-      </Panel>
+  // Sinistra: SidebarLeft (espansa) o SidebarRail (collassata, thin strip).
+  // La sinistra è sempre presente — l'utente la espande/collassa via toggle.
+  // Centro: CenterPane (sempre).
+  // Destra (opzionale): RightPanel se rightPanelMode !== null.
+  // Far right: RightRail (sempre visibile, larghezza fissa, fuori dal PanelGroup).
+
+  const leftSection = sidebarOpen ? (
+    <Panel
+      key="sidebar-open"
+      defaultSize={20}
+      minSize={15}
+      maxSize={36}
+      className="layout__pane"
+    >
+      <SidebarLeft />
+    </Panel>
+  ) : null;
+
+  const rightSection = rightPanelMode !== null ? (
+    <>
       <PanelResizeHandle className="layout__handle" />
-      <Panel defaultSize={50} minSize={28} className="layout__pane">
-        <CenterPane />
+      <Panel
+        key={`right-${rightPanelMode}`}
+        defaultSize={32}
+        minSize={18}
+        maxSize={60}
+        className="layout__pane"
+      >
+        <RightPanel />
       </Panel>
-      <PanelResizeHandle className="layout__handle" />
-      <Panel defaultSize={30} minSize={20} className="layout__pane">
-        <Editor />
-      </Panel>
-    </PanelGroup>
-  ) : (
-    <div className="layout layout--rail">
-      <SidebarRail />
-      <PanelGroup direction="horizontal" autoSaveId="cw-2col" className="layout__panels">
-        <Panel defaultSize={60} minSize={30} className="layout__pane">
+    </>
+  ) : null;
+
+  // autoSaveId varia con la presenza dei pannelli laterali così
+  // react-resizable-panels non ricicla dimensioni stale tra layout diversi.
+  const layoutKey = `${sidebarOpen ? 'L' : 'l'}-${rightPanelMode ?? 'none'}`;
+
+  const top = (
+    <div className="layout layout--with-rails">
+      {!sidebarOpen && <SidebarRail />}
+      <PanelGroup
+        key={layoutKey}
+        direction="horizontal"
+        autoSaveId={`cw-${layoutKey}`}
+        className="layout__panels"
+      >
+        {leftSection}
+        {leftSection && <PanelResizeHandle className="layout__handle" />}
+        <Panel
+          defaultSize={sidebarOpen ? 50 : (rightPanelMode ? 60 : 100)}
+          minSize={28}
+          className="layout__pane"
+        >
           <CenterPane />
         </Panel>
-        <PanelResizeHandle className="layout__handle" />
-        <Panel defaultSize={40} minSize={20} className="layout__pane">
-          <Editor />
-        </Panel>
+        {rightSection}
       </PanelGroup>
+      <RightRail />
     </div>
   );
 

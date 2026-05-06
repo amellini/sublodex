@@ -1,13 +1,105 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { useStore } from '../lib/store';
 import { useSettings, activeProject } from '../lib/settings';
 import { useUI } from '../lib/ui';
+import { ChevronRight, FolderIcon, TrashIcon } from './icons';
 
 type GitFileStatus = {
   path: string;
   staged: 'A' | 'M' | 'D' | 'R' | 'U' | null;
   workdir: 'M' | 'D' | 'U' | '?' | null;
 };
+
+/** Nodo per la tree view del git status: leaf = file, branch = directory. */
+type GitTreeNode = {
+  name: string;          // segmento(i) dal genitore — può contenere "/" se compattato
+  path: string;          // path completo relativo alla repo
+  isDir: boolean;
+  file?: GitFileStatus;  // solo per le foglie
+  children: GitTreeNode[];
+};
+
+/** Costruisce un albero da una lista flat di file git, e collassa le catene
+ *  di directory con un solo figlio (stile VS Code "compact folders"). */
+function buildGitTree(files: GitFileStatus[]): GitTreeNode[] {
+  const root: GitTreeNode[] = [];
+  for (const f of files) {
+    const parts = f.path.split('/').filter(Boolean);
+    let level = root;
+    let cur = '';
+    for (let i = 0; i < parts.length; i++) {
+      const isLeaf = i === parts.length - 1;
+      const name = parts[i];
+      cur = cur ? `${cur}/${name}` : name;
+      let node = level.find((n) => n.name === name && n.isDir === !isLeaf);
+      if (!node) {
+        node = {
+          name,
+          path: cur,
+          isDir: !isLeaf,
+          file: isLeaf ? f : undefined,
+          children: [],
+        };
+        level.push(node);
+      }
+      level = node.children;
+    }
+  }
+  const sortRec = (nodes: GitTreeNode[]) => {
+    nodes.sort((a, b) => {
+      if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+    for (const n of nodes) sortRec(n.children);
+  };
+  const compactRec = (nodes: GitTreeNode[]) => {
+    for (const n of nodes) {
+      if (!n.isDir) continue;
+      compactRec(n.children);
+      while (n.children.length === 1 && n.children[0].isDir) {
+        const only = n.children[0];
+        n.name = `${n.name}/${only.name}`;
+        n.path = only.path;
+        n.children = only.children;
+      }
+    }
+  };
+  sortRec(root);
+  compactRec(root);
+  return root;
+}
+
+/** Conta ricorsivamente le foglie sotto un nodo (utile per il badge sulla dir). */
+function countLeaves(node: GitTreeNode): number {
+  if (!node.isDir) return 1;
+  let c = 0;
+  for (const child of node.children) c += countLeaves(child);
+  return c;
+}
+
+/** Conta i file sotto un nodo classificati per stato (added/modified/deleted).
+ *  - added: nuovi file (`?` workdir o `A` staged)
+ *  - deleted: `D` (sia staged che workdir)
+ *  - modified: tutto il resto (M, R, U merge) — fallback safe. */
+type StatusCounts = { added: number; modified: number; deleted: number };
+function countByStatus(node: GitTreeNode, staged: boolean): StatusCounts {
+  if (!node.isDir && node.file) {
+    const code = staged ? node.file.staged : node.file.workdir;
+    if (code === 'A' || code === '?') return { added: 1, modified: 0, deleted: 0 };
+    if (code === 'D') return { added: 0, modified: 0, deleted: 1 };
+    return { added: 0, modified: 1, deleted: 0 };
+  }
+  const acc: StatusCounts = { added: 0, modified: 0, deleted: 0 };
+  for (const c of node.children) {
+    const sub = countByStatus(c, staged);
+    acc.added += sub.added;
+    acc.modified += sub.modified;
+    acc.deleted += sub.deleted;
+  }
+  return acc;
+}
 
 type GitStatus =
   | { isGitRepo: false }
@@ -42,7 +134,9 @@ type Stash = { ref: string; message: string };
 export function GitPanel() {
   const settings = useSettings((s) => s.settings);
   const active = activeProject(settings);
-  const setActiveFile = useStore((s) => s.setActiveFile);
+  const setActiveFileRaw = useStore((s) => s.setActiveFile);
+  const openEditorPanel = useUI((s) => s.openEditorPanel);
+  const setActiveFile = (p?: string) => { setActiveFileRaw(p); if (p) openEditorPanel(); };
   const setIsGitRepo = useUI((s) => s.setIsGitRepo);
 
   const [data, setData] = useState<GitStatus | null>(null);
@@ -64,6 +158,22 @@ export function GitPanel() {
   const [stashMsg, setStashMsg] = useState('');
   const [prInput, setPrInput] = useState('');
   const [prOpen, setPrOpen] = useState(false);
+  /** Apertura del menu dropdown del commit-button (split button stile VS Code). */
+  const [commitMenuOpen, setCommitMenuOpen] = useState(false);
+  const commitMenuRef = useRef<HTMLDivElement>(null);
+  const caretBtnRef = useRef<HTMLButtonElement>(null);
+  /** Posizione assoluta in viewport del dropdown, calcolata dal bbox del caret. */
+  const [commitMenuPos, setCommitMenuPos] = useState<{ top: number; right: number } | null>(null);
+  /** Path delle directory chiuse nella tree view (default: tutte aperte). */
+  const [collapsedDirs, setCollapsedDirs] = useState<Set<string>>(() => new Set());
+  const toggleDir = useCallback((path: string) => {
+    setCollapsedDirs((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -105,6 +215,43 @@ export function GitPanel() {
   }, []);
 
   useEffect(() => { void refresh(); }, [refresh, active?.id]);
+
+  // Chiude il dropdown del commit button su click esterno. Pattern allineato
+  // a quello del model-picker nel Composer.
+  useEffect(() => {
+    if (!commitMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (commitMenuRef.current?.contains(target)) return;
+      if (caretBtnRef.current?.contains(target)) return;
+      setCommitMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [commitMenuOpen]);
+
+  // Calcola la posizione del dropdown ogni volta che si apre o quando la
+  // finestra viene ridimensionata/scrollata. Il dropdown è renderizzato
+  // via portal con position:fixed, così non viene tagliato dall'overflow
+  // del Panel di react-resizable-panels.
+  useEffect(() => {
+    if (!commitMenuOpen) {
+      setCommitMenuPos(null);
+      return;
+    }
+    const update = () => {
+      const r = caretBtnRef.current?.getBoundingClientRect();
+      if (!r) return;
+      setCommitMenuPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+    };
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [commitMenuOpen]);
 
   const runOp = async (label: string, op: () => Promise<Response>) => {
     setBusy(true);
@@ -162,9 +309,103 @@ export function GitPanel() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ message: commitMsg }),
       }),
-    ).then(() => setCommitMsg(''));
+    ).then(() => { setCommitMsg(''); setCommitMenuOpen(false); });
   const pull = () => runOp('pull', () => fetch('/api/git/pull', { method: 'POST' }));
   const push = () => runOp('push', () => fetch('/api/git/push', { method: 'POST' }));
+
+  /** Commit + push in sequenza (lato client). Se il commit fallisce, il push
+   *  non viene tentato. Il messaggio viene resettato solo se entrambi vanno
+   *  a buon fine: in caso di errore l'utente ritrova il msg per ritentare.
+   *  L'output combinato di commit + push viene mostrato nel pannello opOutput. */
+  const commitAndPush = async () => {
+    setBusy(true);
+    setOpError(null);
+    setOpOutput(null);
+    setCommitMenuOpen(false);
+    try {
+      const rs = await fetch('/api/git/stage-all', { method: 'POST' });
+      const js = (await rs.json()) as RunResult;
+      if (!js.ok) {
+        setOpError(((js.stderr || js.stdout) ?? '').trim() || `stage failed (code ${js.code})`);
+        await refresh();
+        return;
+      }
+      const r1 = await fetch('/api/git/commit', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: commitMsg }),
+      });
+      const j1 = (await r1.json()) as RunResult;
+      const t1 = (j1.stdout + (j1.stderr ? `\n${j1.stderr}` : '')).trim();
+      if (!j1.ok) {
+        setOpError(t1 || `commit failed (code ${j1.code})`);
+        await refresh();
+        return;
+      }
+      const r2 = await fetch('/api/git/push', { method: 'POST' });
+      const j2 = (await r2.json()) as RunResult;
+      const t2 = (j2.stdout + (j2.stderr ? `\n${j2.stderr}` : '')).trim();
+      const combined = [t1, t2].filter(Boolean).join('\n---\n');
+      if (!j2.ok) {
+        // commit ok, push ko: lo segnaliamo come errore ma manteniamo la traccia
+        // del commit avvenuto nel testo.
+        setOpError(combined || `push failed (code ${j2.code})`);
+        // Il commit È andato → resettiamo comunque il msg per evitare doppi
+        // commit accidentali al retry; l'utente farà solo il push.
+        setCommitMsg('');
+      } else {
+        setOpOutput({ label: 'commit + push', text: combined });
+        setCommitMsg('');
+      }
+      await refresh();
+    } catch (err) {
+      setOpError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Save dello stash usando il messaggio della textarea principale.
+   *  Differisce da `stashSave` (sotto, per il pannello stash espandibile)
+   *  perché legge `commitMsg` invece di `stashMsg`. */
+  const stashFromCommit = () =>
+    runOp('stash', () =>
+      fetch('/api/git/stash/save', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: commitMsg }),
+      }),
+    ).then(() => { setCommitMsg(''); setCommitMenuOpen(false); });
+
+  const [generating, setGenerating] = useState(false);
+  const generateCommitMsg = async () => {
+    setGenerating(true);
+    setOpError(null);
+    try {
+      const r = await fetch('/api/git/generate-commit-msg', { method: 'POST' });
+      const text = await r.text();
+      if (!text.trim()) {
+        setOpError(`empty response from server (status ${r.status}) — request may have timed out`);
+        return;
+      }
+      let j: { message?: string; error?: string };
+      try {
+        j = JSON.parse(text) as { message?: string; error?: string };
+      } catch {
+        setOpError(`invalid JSON response: ${text.slice(0, 200)}`);
+        return;
+      }
+      if (!r.ok || j.error) {
+        setOpError(j.error ?? 'failed to generate commit message');
+        return;
+      }
+      if (j.message) setCommitMsg(j.message);
+    } catch (err) {
+      setOpError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setGenerating(false);
+    }
+  };
   const checkout = (branch: string, create = false) =>
     runOp(create ? `checkout -b ${branch}` : `checkout ${branch}`, () =>
       fetch('/api/git/checkout', {
@@ -256,6 +497,11 @@ export function GitPanel() {
     }
   };
 
+  const stagedFiles = data?.isGitRepo ? data.files.filter((f) => f.staged !== null) : [];
+  const unstagedFiles = data?.isGitRepo ? data.files.filter((f) => f.staged === null) : [];
+  const stagedTree = useMemo(() => buildGitTree(stagedFiles), [stagedFiles]);
+  const unstagedTree = useMemo(() => buildGitTree(unstagedFiles), [unstagedFiles]);
+
   if (loading && !data) {
     return <div className="git-panel git-panel--empty">loading…</div>;
   }
@@ -274,8 +520,67 @@ export function GitPanel() {
     );
   }
 
-  const stagedFiles = data.files.filter((f) => f.staged !== null);
-  const unstagedFiles = data.files.filter((f) => f.staged === null);
+  /** Renderer ricorsivo della tree. Le foglie usano <FileRow>, le dir un header
+   *  collassabile. L'indentazione cresce di 12px per livello, come la FileTree. */
+  const renderTree = (nodes: GitTreeNode[], depth: number, staged: boolean): ReactNode =>
+    nodes.map((node) => {
+      if (!node.isDir && node.file) {
+        const f = node.file;
+        return (
+          <FileRow
+            key={`${staged ? 'staged' : 'workdir'}-${f.path}`}
+            f={f}
+            staged={staged}
+            depth={depth}
+            onClick={() =>
+              staged
+                ? setActiveFile(`diff://staged:${f.path}`)
+                : f.workdir === '?'
+                  ? setActiveFile(f.path)
+                  : setActiveFile(`diff://workdir:${f.path}`)
+            }
+            onAction={() => (staged ? unstage(f.path) : stage(f.path))}
+            onDiscard={staged ? null : () => discard(f.path, f.workdir === '?')}
+            busy={busy}
+            confirming={!staged && confirmDiscard === f.path}
+            onRequestDiscard={() => setConfirmDiscard(f.path)}
+            onCancelDiscard={() => setConfirmDiscard(null)}
+          />
+        );
+      }
+      const isCollapsed = collapsedDirs.has(node.path);
+      const counts = countByStatus(node, staged);
+      const tooltip = `${node.path}\n${counts.added} added · ${counts.modified} modified · ${counts.deleted} deleted`;
+      return (
+        <div key={`dir-${staged ? 's' : 'w'}-${node.path}`}>
+          <button
+            type="button"
+            className="git-dir"
+            style={{ paddingLeft: 6 + depth * 12 }}
+            onClick={() => toggleDir(node.path)}
+            title={tooltip}
+          >
+            <span
+              className={`git-dir__chev ${isCollapsed ? '' : 'git-dir__chev--open'}`}
+            >
+              <ChevronRight size={9} />
+            </span>
+            <span className="git-dir__icon">
+              <FolderIcon size={13} />
+            </span>
+            <span className="git-dir__name">{node.name}</span>
+            <span className="git-dir__counts" aria-label={`added ${counts.added}, modified ${counts.modified}, deleted ${counts.deleted}`}>
+              <span className="git-dir__count git-dir__count--added">{counts.added}</span>
+              <span className="git-dir__count-sep">/</span>
+              <span className="git-dir__count git-dir__count--modified">{counts.modified}</span>
+              <span className="git-dir__count-sep">/</span>
+              <span className="git-dir__count git-dir__count--deleted">{counts.deleted}</span>
+            </span>
+          </button>
+          {!isCollapsed && renderTree(node.children, depth + 1, staged)}
+        </div>
+      );
+    });
 
   return (
     <div className="git-panel">
@@ -342,6 +647,117 @@ export function GitPanel() {
         </div>
       )}
 
+      <PanelGroup direction="vertical" autoSaveId="git-panel-vertical" className="git-panel__split">
+        <Panel defaultSize={40} minSize={20} className="git-panel__split-top">
+      <div className="git-panel__commit git-panel__commit--top">
+        <div className="git-commit__textarea-wrap">
+          <textarea
+            className="field__textarea git-commit__textarea"
+            value={commitMsg}
+            placeholder="commit message"
+            onChange={(e) => setCommitMsg(e.target.value)}
+            onKeyDown={(e) => {
+              if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                if (!busy && commitMsg.trim() && stagedFiles.length > 0) {
+                  e.preventDefault();
+                  commit();
+                }
+              }
+            }}
+          />
+          <button
+            className="git-commit__generate"
+            onClick={generateCommitMsg}
+            disabled={generating || busy || (data?.isGitRepo && data.files.length === 0)}
+            title={
+              data?.isGitRepo && data.files.length === 0
+                ? 'no changes to summarize'
+                : stagedFiles.length > 0
+                  ? 'generate commit message from staged changes (AI)'
+                  : 'generate commit message from all changes (AI)'
+            }
+            aria-label="generate commit message"
+          >
+            {generating
+              ? <span className="git-commit__dots"><span>.</span><span>.</span><span>.</span></span>
+              : '✦'
+            }
+          </button>
+        </div>
+        <div className="git-commit__actions">
+          <div className="git-commit-btn">
+            <button
+              className="git-commit-btn__main"
+              onClick={commit}
+              disabled={busy || !commitMsg.trim() || stagedFiles.length === 0}
+              title={
+                stagedFiles.length === 0
+                  ? 'stage files first'
+                  : !commitMsg.trim()
+                    ? 'enter a commit message'
+                    : 'commit staged changes (Ctrl+Enter)'
+              }
+            >
+              commit
+            </button>
+            <div className="git-commit-btn__menu-wrap">
+              <button
+                ref={caretBtnRef}
+                className="git-commit-btn__caret"
+                onClick={() => setCommitMenuOpen((v) => !v)}
+                disabled={busy}
+                title="more actions"
+                aria-label="more commit actions"
+                aria-haspopup="menu"
+                aria-expanded={commitMenuOpen}
+              >
+                {commitMenuOpen ? '▴' : '▾'}
+              </button>
+              {commitMenuOpen && commitMenuPos && createPortal(
+                <div
+                  ref={commitMenuRef}
+                  className="git-commit-btn__menu"
+                  role="menu"
+                  style={{ top: commitMenuPos.top, right: commitMenuPos.right }}
+                >
+                  <button
+                    className="git-commit-btn__opt"
+                    role="menuitem"
+                    onClick={commitAndPush}
+                    disabled={busy || !commitMsg.trim() || data.files.length === 0}
+                    title={
+                      data.files.length === 0
+                        ? 'no changes'
+                        : !commitMsg.trim()
+                          ? 'enter a commit message'
+                          : 'stage all, commit and push'
+                    }
+                  >
+                    <span className="git-commit-btn__opt-label">commit + push</span>
+                    <span className="git-commit-btn__opt-sub">stage all, commit, then git push</span>
+                  </button>
+                  <button
+                    className="git-commit-btn__opt"
+                    role="menuitem"
+                    onClick={stashFromCommit}
+                    disabled={busy || data.files.length === 0}
+                    title={
+                      data.files.length === 0
+                        ? 'nothing to stash'
+                        : 'stash all changes (with optional message)'
+                    }
+                  >
+                    <span className="git-commit-btn__opt-label">stash</span>
+                    <span className="git-commit-btn__opt-sub">git stash push</span>
+                  </button>
+                </div>,
+                document.body,
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="git-panel__actions">
         <button className="header__btn" onClick={pull} disabled={busy || data.behind === 0}>
           pull
@@ -392,7 +808,9 @@ export function GitPanel() {
           <pre className="git-panel__op-text">{opOutput.text}</pre>
         </div>
       )}
-
+        </Panel>
+        <PanelResizeHandle className="layout__handle layout__handle--horizontal" />
+        <Panel defaultSize={60} minSize={20} className="git-panel__split-bottom">
       <div className="git-panel__list">
         {stagedFiles.length > 0 && (
           <>
@@ -402,20 +820,7 @@ export function GitPanel() {
                 unstage all
               </button>
             </div>
-            {stagedFiles.map((f) => (
-              <FileRow
-                key={`staged-${f.path}`}
-                f={f}
-                staged
-                onClick={() => setActiveFile(`diff://staged:${f.path}`)}
-                onAction={() => unstage(f.path)}
-                onDiscard={null}
-                busy={busy}
-                confirming={false}
-                onRequestDiscard={() => {}}
-                onCancelDiscard={() => {}}
-              />
-            ))}
+            {renderTree(stagedTree, 0, true)}
           </>
         )}
         {unstagedFiles.length > 0 && (
@@ -426,22 +831,7 @@ export function GitPanel() {
                 stage all
               </button>
             </div>
-            {unstagedFiles.map((f) => (
-              <FileRow
-                key={`workdir-${f.path}`}
-                f={f}
-                staged={false}
-                onClick={() =>
-                  f.workdir === '?' ? setActiveFile(f.path) : setActiveFile(`diff://workdir:${f.path}`)
-                }
-                onAction={() => stage(f.path)}
-                onDiscard={() => discard(f.path, f.workdir === '?')}
-                busy={busy}
-                confirming={confirmDiscard === f.path}
-                onRequestDiscard={() => setConfirmDiscard(f.path)}
-                onCancelDiscard={() => setConfirmDiscard(null)}
-              />
-            ))}
+            {renderTree(unstagedTree, 0, false)}
           </>
         )}
         {data.files.length === 0 && (
@@ -532,34 +922,19 @@ export function GitPanel() {
           </div>
         )}
       </div>
-
-      {stagedFiles.length > 0 && (
-        <div className="git-panel__commit">
-          <textarea
-            className="field__textarea"
-            rows={2}
-            value={commitMsg}
-            placeholder="commit message"
-            onChange={(e) => setCommitMsg(e.target.value)}
-          />
-          <button
-            className="composer__send"
-            onClick={commit}
-            disabled={busy || !commitMsg.trim()}
-          >
-            commit
-          </button>
-        </div>
-      )}
+        </Panel>
+      </PanelGroup>
     </div>
   );
 }
 
 function FileRow({
-  f, staged, onClick, onAction, onDiscard, busy, confirming, onRequestDiscard, onCancelDiscard,
+  f, staged, depth = 0, onClick, onAction, onDiscard, busy, confirming, onRequestDiscard, onCancelDiscard,
 }: {
   f: GitFileStatus;
   staged: boolean;
+  /** Profondità nella tree view: indenta la riga di 12px per livello. */
+  depth?: number;
   onClick: () => void;
   onAction: () => void;
   /** null = staged file (no discard available); altrimenti il discard handler */
@@ -570,11 +945,30 @@ function FileRow({
   onCancelDiscard: () => void;
 }) {
   const code = staged ? f.staged : f.workdir;
-  const label = code ?? '·';
+  // Mappa il codice git short-status a una label più leggibile:
+  //   ? (untracked, file nuovo non tracciato)  → U
+  //   A (added)                                → A
+  //   M (modified)                             → M
+  //   D (deleted)                              → D
+  //   R (renamed)                              → R
+  //   U (unmerged conflict)                    → !
+  const label = code === '?' ? 'U' : code === 'U' ? '!' : (code ?? '·');
+  const codeTitle =
+    code === '?' ? 'untracked (new file)' :
+    code === 'A' ? 'added' :
+    code === 'M' ? 'modified' :
+    code === 'D' ? 'deleted' :
+    code === 'R' ? 'renamed' :
+    code === 'U' ? 'unmerged conflict' :
+    '';
+  // Mostra solo il basename: il path completo è ricostruibile dalla gerarchia
+  // della tree, e il title attribute lo rende disponibile su hover.
+  const basename = f.path.split('/').pop() ?? f.path;
+  const indent = 6 + depth * 12;
   if (confirming && onDiscard) {
     return (
-      <div className="git-row git-row--confirm">
-        <span className="git-row__confirm-text">discard {f.path}?</span>
+      <div className="git-row git-row--confirm" style={{ paddingLeft: indent }}>
+        <span className="git-row__confirm-text">discard {basename}?</span>
         <div className="git-row__confirm-actions">
           <button className="header__btn" onClick={onCancelDiscard}>cancel</button>
           <button className="header__btn header__btn--danger" onClick={onDiscard} disabled={busy}>
@@ -585,10 +979,16 @@ function FileRow({
     );
   }
   return (
-    <div className="git-row">
+    <div className="git-row" style={{ paddingLeft: indent }}>
       <button className="git-row__select" onClick={onClick} title={f.path}>
-        <span className={`git-row__code git-row__code--${label}`}>{label}</span>
-        <span className="git-row__path">{f.path}</span>
+        <span
+          className={`git-row__code git-row__code--${label}`}
+          title={codeTitle}
+          aria-label={codeTitle}
+        >
+          {label}
+        </span>
+        <span className="git-row__path">{basename}</span>
       </button>
       {onDiscard && (
         <button
@@ -596,8 +996,9 @@ function FileRow({
           onClick={onRequestDiscard}
           disabled={busy}
           title="discard changes"
+          aria-label="discard changes"
         >
-          ⌫
+          <TrashIcon size={13} />
         </button>
       )}
       <button
@@ -605,6 +1006,7 @@ function FileRow({
         onClick={onAction}
         disabled={busy}
         title={staged ? 'unstage' : 'stage'}
+        aria-label={staged ? 'unstage' : 'stage'}
       >
         {staged ? '−' : '+'}
       </button>

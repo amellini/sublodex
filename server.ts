@@ -426,6 +426,27 @@ import {
   isSshFatalError,
 } from './src-server/shell-utils';
 
+// Helpers attachments (upload immagini composer).
+import {
+  ALLOWED_MIMES,
+  MAX_BYTES,
+  MAX_THUMB_BYTES,
+  RETENTION_DAYS,
+  PRUNE_INTERVAL_MS,
+  buildAttachmentPaths,
+  ensureSubLodeXGitignoreLocal,
+  ensureSubLodeXGitignoreRemote,
+  extFromMime,
+  isAttachmentRel,
+  mimeFromExt,
+  pruneOriginalsLocal,
+  pruneOriginalsRemote,
+  readAttachmentRemote,
+  resolveAttachmentAbs,
+  writeAttachmentLocal,
+  writeAttachmentRemote,
+} from './src-server/attachments';
+
 /** Risolve un path relativo al progetto (locale o remoto) confinandolo
  *  alla root del progetto. Rifiuta path assoluti e traversal con `..`.
  *  Ritorna `{ ok:true, abs }` o `{ ok:false, status, error }`.
@@ -1156,8 +1177,14 @@ type ServerMsg =
   | { type: 'done' }
   | { type: 'error'; error: string };
 
+type ClientAttachment = {
+  id: string;
+  originalPath: string;
+  mime: string;
+};
+
 type ClientMsg =
-  | { type: 'send'; prompt: string; sessionId?: string; model?: string; permissionMode?: string }
+  | { type: 'send'; prompt: string; sessionId?: string; model?: string; permissionMode?: string; attachments?: ClientAttachment[] }
   | { type: 'cancel' };
 
 type WsData = {
@@ -1180,6 +1207,41 @@ function buildClaudeEnv(): Record<string, string | undefined> {
   return env;
 }
 
+async function buildMultimodalPrompt(
+  text: string,
+  attachments: ClientAttachment[],
+  projectPath: string,
+): Promise<AsyncIterable<import('@anthropic-ai/claude-agent-sdk').SDKUserMessage>> {
+  type ContentBlockParam = import('@anthropic-ai/sdk/resources/messages/messages').ContentBlockParam;
+  const content: ContentBlockParam[] = [];
+
+  for (const att of attachments) {
+    const filePath = path.join(projectPath, att.originalPath);
+    const data = await readFile(filePath);
+    content.push({
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: att.mime as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+        data: data.toString('base64'),
+      },
+    });
+  }
+
+  if (text.length > 0) {
+    content.push({ type: 'text', text });
+  }
+
+  async function* gen() {
+    yield {
+      type: 'user' as const,
+      message: { role: 'user' as const, content },
+      parent_tool_use_id: null,
+    };
+  }
+  return gen();
+}
+
 async function runClaude(
   prompt: string,
   sessionId: string | undefined,
@@ -1187,6 +1249,7 @@ async function runClaude(
   permissionMode: string | undefined,
   send: (m: ServerMsg) => void,
   registerAbort: (ac: AbortController) => void,
+  attachments?: ClientAttachment[],
 ): Promise<void> {
   const project = activeProject(settings);
   const ac = new AbortController();
@@ -1209,20 +1272,23 @@ async function runClaude(
   };
   if (model) opts.model = model;
   if (sessionId) opts.resume = sessionId;
-  // In modalità bundled (.app) il binario nativo `claude` viene spedito come
-  // resource Tauri e il path passato qui via env. In dev (no env) il SDK lo
-  // risolve da node_modules come al solito.
   if (process.env.SUBLODEX_CLAUDE_BIN) {
-    // `pathToClaudeCodeExecutable` non è esposto nei types pubblici del SDK
-    // ma è un'opzione runtime supportata. Cast tipato a Record per non usare
-    // `as any`, mantenendo intent esplicito.
     (opts as unknown as Record<string, unknown>).pathToClaudeCodeExecutable =
       process.env.SUBLODEX_CLAUDE_BIN;
   }
 
+  const hasImages = attachments && attachments.length > 0;
+  const promptInput: Parameters<typeof query>[0]['prompt'] = hasImages
+    ? await buildMultimodalPrompt(prompt, attachments, project.path)
+    : prompt;
+
   try {
-    log.info('claude', 'starting', { prompt: prompt.slice(0, 80), cwd: project.path });
-    for await (const msg of query({ prompt, options: opts })) {
+    log.info('claude', 'starting', {
+      prompt: prompt.slice(0, 80),
+      cwd: project.path,
+      images: hasImages ? attachments.length : 0,
+    });
+    for await (const msg of query({ prompt: promptInput, options: opts })) {
       send({ type: 'event', event: msg as unknown as Record<string, unknown> });
     }
     log.info('claude', 'done');
@@ -2217,12 +2283,209 @@ const server = Bun.serve<WsData, {}>({
       }
     }
 
+    /* ---------- attachments: upload + serve ---------- */
+
+    // Upload di una coppia (originale, thumbnail) come multipart/form-data.
+    // Campi attesi: `original` (File), `thumb` (Blob webp), `width`, `height`.
+    // Il client genera la thumbnail (512px lato lungo, webp q≈0.78) per non
+    // dipendere da Sharp/native libs lato server (problematico in bundle Tauri).
+    //
+    // Il path passato a Claude resta SEMPRE l'originale; la UI userà la
+    // thumbnail per il rendering in scrollback. Vedi src-server/attachments.ts
+    // per dettagli sul layout filesystem (.sublodex/uploads vs .sublodex/thumbs).
+    if (url.pathname === '/api/upload' && req.method === 'POST') {
+      const projectId = url.searchParams.get('projectId');
+      if (!projectId) return new Response('missing projectId', { status: 400 });
+      if (!isValidProjectId(projectId)) return new Response('invalid projectId', { status: 400 });
+
+      // L'upload è SEMPRE per il progetto attivo. Sanity check: il projectId
+      // passato dal client deve combaciare con l'attivo, altrimenti un client
+      // potrebbe iniettare file in un progetto diverso da quello che pensa
+      // l'utente. (Difesa in profondità — il content è già confinato al
+      // .sublodex/ del progetto attivo lato server.)
+      const project = activeProject(settings);
+      if (project.id !== projectId) {
+        return new Response('projectId mismatch with active project', { status: 409 });
+      }
+
+      let form: FormData;
+      try {
+        form = await req.formData();
+      } catch (err) {
+        return new Response(`invalid multipart: ${(err as Error).message}`, { status: 400 });
+      }
+
+      const original = form.get('original');
+      const thumb = form.get('thumb');
+      if (!(original instanceof File) || !(thumb instanceof Blob)) {
+        return new Response('missing original or thumb', { status: 400 });
+      }
+
+      // Validazione mime + size sull'ORIGINALE.
+      if (!ALLOWED_MIMES.has(original.type)) {
+        return new Response(`unsupported mime: ${original.type}`, { status: 415 });
+      }
+      if (original.size > MAX_BYTES) {
+        return new Response(`file too large: ${original.size} > ${MAX_BYTES}`, { status: 413 });
+      }
+      if (original.size === 0) {
+        return new Response('empty file', { status: 400 });
+      }
+      // Validazione thumbnail: deve essere webp e sotto al cap (defense-in-depth
+      // contro client che spacciano un file enorme per "thumb").
+      if (thumb.type && thumb.type !== 'image/webp') {
+        return new Response(`thumb must be image/webp, got ${thumb.type}`, { status: 415 });
+      }
+      if (thumb.size > MAX_THUMB_BYTES) {
+        return new Response(`thumb too large: ${thumb.size}`, { status: 413 });
+      }
+      if (thumb.size === 0) {
+        return new Response('empty thumb', { status: 400 });
+      }
+
+      const ext = extFromMime(original.type);
+      if (!ext) return new Response('unsupported mime', { status: 415 });
+
+      // Dimensioni dell'originale (per evitare CLS sul rendering UI).
+      // Inviate dal client come stringhe; sanitizziamo.
+      const widthStr = form.get('width');
+      const heightStr = form.get('height');
+      const width = typeof widthStr === 'string' ? Number.parseInt(widthStr, 10) : NaN;
+      const height = typeof heightStr === 'string' ? Number.parseInt(heightStr, 10) : NaN;
+      const safeWidth = Number.isFinite(width) && width > 0 && width < 100_000 ? width : undefined;
+      const safeHeight = Number.isFinite(height) && height > 0 && height < 100_000 ? height : undefined;
+
+      const filenameRaw = (original as File).name || '';
+      // Sanitize filename: solo per display, non lo usiamo come path.
+      const filename = filenameRaw.length > 0 && filenameRaw.length < 256 ? filenameRaw : undefined;
+
+      const { id, originalRel, thumbnailRel } = buildAttachmentPaths(ext);
+
+      const originalBytes = new Uint8Array(await original.arrayBuffer());
+      const thumbBytes = new Uint8Array(await thumb.arrayBuffer());
+
+      try {
+        if (project.remote) {
+          await ensureSubLodeXGitignoreRemote(project.remote, project.path, sshExec);
+          await writeAttachmentRemote(
+            project.remote, project.path,
+            originalRel, thumbnailRel,
+            originalBytes, thumbBytes,
+            sshExec,
+          );
+        } else {
+          await ensureSubLodeXGitignoreLocal(project.path);
+          await writeAttachmentLocal(
+            project.path,
+            originalRel, thumbnailRel,
+            originalBytes, thumbBytes,
+          );
+        }
+      } catch (err) {
+        log.error('upload', 'write failed', { err: (err as Error).message });
+        return new Response(`write failed: ${(err as Error).message}`, { status: 500 });
+      }
+
+      log.info('upload', 'ok', {
+        id, mime: original.type, size: original.size,
+        remote: !!project.remote,
+      });
+
+      return Response.json({
+        id,
+        originalPath: originalRel,
+        thumbnailPath: thumbnailRel,
+        mime: original.type,
+        size: original.size,
+        width: safeWidth,
+        height: safeHeight,
+        filename,
+      });
+    }
+
+    // Serve i bytes di una thumbnail (o di un originale ancora vivo) come
+    // immagine binaria, per consumo via `<img src="/api/blob?...">`.
+    //
+    // Auth: il monkey-patch fetch del client passa il Bearer in header solo
+    // su `window.fetch`. Le `<img>` usano una nuova request senza header, quindi
+    // il client passa il token in query (`?token=...`) — già supportato da
+    // tokenFromRequest. CSP `img-src 'self'` permette il same-origin.
+    //
+    // Allow-list: oltre a resolveProjectPath (che confina al project root),
+    // consentiamo SOLO path sotto .sublodex/{uploads,thumbs}/ — non vogliamo
+    // trasformare /api/blob in un file reader generico.
+    if (url.pathname === '/api/blob' && req.method === 'GET') {
+      const p = url.searchParams.get('path');
+      if (!p) return new Response('missing path', { status: 400 });
+      const project = activeProject(settings);
+      if (!isAttachmentRel(p)) {
+        return new Response('forbidden: not an attachment path', { status: 403 });
+      }
+      const resolved = resolveProjectPath(project, p);
+      if (!resolved.ok) return new Response(resolved.error, { status: resolved.status });
+      const abs = resolved.abs;
+      const ext = (p.match(/\.([a-zA-Z0-9]+)$/)?.[1] ?? '').toLowerCase();
+      const ct = mimeFromExt(ext);
+      // I path sono uuid → contenuto immutabile. Cache aggressivo sicuro.
+      const cacheHeaders: Record<string, string> = {
+        'content-type': ct,
+        'cache-control': 'public, max-age=31536000, immutable',
+      };
+
+      if (project.remote) {
+        const bytes = await readAttachmentRemote(project.remote, abs, sshExec);
+        if (!bytes) return new Response('not found', { status: 404 });
+        // Estraiamo un ArrayBuffer "puro" (slice copia + scarta SharedArrayBuffer).
+        // Necessario perché TS 5.5+ ha stretto i tipi su Uint8Array.buffer
+        // (può essere ArrayBufferLike che include SharedArrayBuffer), e
+        // Blob/BodyInit accettano solo ArrayBuffer puro. Copia O(N) trascurabile
+        // su file ≤ 5 MB rispetto al round-trip ssh che li ha portati qui.
+        const copy = bytes.slice().buffer as ArrayBuffer;
+        return new Response(copy, { headers: cacheHeaders });
+      }
+      try {
+        const f = Bun.file(abs);
+        if (!(await f.exists())) return new Response('not found', { status: 404 });
+        return new Response(f, { headers: cacheHeaders });
+      } catch {
+        return new Response('not found', { status: 404 });
+      }
+    }
+
     if (url.pathname === '/api/conversation/sessions' && req.method === 'GET') {
       const projectId = url.searchParams.get('projectId');
       if (!projectId) return new Response('missing projectId', { status: 400 });
       if (!isValidProjectId(projectId)) return new Response('invalid projectId', { status: 400 });
       const sessions = await listSessions(projectId);
       return Response.json({ sessions });
+    }
+
+    if (url.pathname === '/api/conversation/sessions/all' && req.method === 'GET') {
+      // Lista sessioni per TUTTI i progetti noti dai settings.
+      // Usato dal pannello sessioni per mostrare la cronologia globale
+      // raggruppata per progetto. Ogni gruppo include name + sortKey
+      // (max updatedAt session, o lastUsedAt project) per ordinare i gruppi.
+      const groups: Array<{
+        projectId: string;
+        projectName: string;
+        lastUsedAt: number;
+        sortKey: number;
+        sessions: Awaited<ReturnType<typeof listSessions>>;
+      }> = [];
+      for (const p of settings.projects) {
+        if (!isValidProjectId(p.id)) continue;
+        const sessions = await listSessions(p.id);
+        const mostRecent = sessions.length > 0 ? sessions[0].updatedAt : 0;
+        groups.push({
+          projectId: p.id,
+          projectName: p.name,
+          lastUsedAt: p.lastUsedAt ?? 0,
+          sortKey: Math.max(mostRecent, p.lastUsedAt ?? 0),
+          sessions,
+        });
+      }
+      groups.sort((a, b) => b.sortKey - a.sortKey);
+      return Response.json({ groups });
     }
 
     if (url.pathname === '/api/conversation/sessions' && req.method === 'POST') {
@@ -2344,6 +2607,96 @@ const server = Bun.serve<WsData, {}>({
       const staged = url.searchParams.get('staged') === '1';
       const diff = await readGitDiff(project, file, staged);
       return new Response(diff, { headers: { 'content-type': 'text/plain; charset=utf-8' } });
+    }
+
+    if (url.pathname === '/api/git/generate-commit-msg' && req.method === 'POST') {
+      const project = activeProject(settings);
+      // Preferiamo lo staged diff se esiste; altrimenti usiamo il working tree
+      // così l'utente può generare il messaggio PRIMA dello staging (per
+      // capire cosa sta per committare).
+      const stagedR = await runGit(project, ['diff', '--cached']);
+      let diff = stagedR.ok ? stagedR.stdout : '';
+      let usingStaged = !!diff.trim();
+      if (!usingStaged) {
+        const unstagedR = await runGit(project, ['diff']);
+        diff = unstagedR.ok ? unstagedR.stdout : '';
+        // Aggiungiamo anche i file untracked: il diff non li include ma vanno
+        // menzionati per dare contesto al modello.
+        const statusUntracked = await runGit(project, ['ls-files', '--others', '--exclude-standard']);
+        if (statusUntracked.ok && statusUntracked.stdout.trim()) {
+          diff += '\n\n--- UNTRACKED FILES (new files not yet staged) ---\n' + statusUntracked.stdout;
+        }
+      }
+      if (!diff.trim()) {
+        return Response.json({ error: 'no changes to summarize' }, { status: 400 });
+      }
+      const stagedDiff = diff;
+
+      const statResult = await runGit(project,
+        usingStaged ? ['diff', '--cached', '--stat'] : ['diff', '--stat']);
+      const diffStat = statResult.ok ? statResult.stdout : '';
+
+      const logResult = await runGit(project, ['log', '--oneline', '-10']);
+      const recentLog = logResult.ok ? logResult.stdout : '';
+
+      const maxDiff = 15000;
+      const diffTruncated = stagedDiff.length > maxDiff
+        ? stagedDiff.slice(0, maxDiff) + '\n\n[...diff truncated, see --stat above for full scope...]'
+        : stagedDiff;
+
+      const prompt = [
+        'You are a commit message generator. Output ONLY the commit message, nothing else.',
+        'No quotes, no explanation, no markdown, no preamble.',
+        '',
+        'Rules:',
+        '- Use Conventional Commits: type(scope): description',
+        '- Types: feat, fix, refactor, style, chore, docs, test, perf, ci, build',
+        '- Scope is optional, use the most relevant module/area name',
+        '- First line max 72 chars',
+        '- If multiple significant changes, add a blank line then bullet points',
+        '- Be specific about WHAT changed, not generic ("update files" is bad)',
+        '- Analyze the actual code changes to understand the intent',
+        '',
+        '--- RECENT COMMITS (for style reference) ---',
+        recentLog,
+        '',
+        '--- DIFF STAT (full overview of changed files) ---',
+        diffStat,
+        '',
+        '--- STAGED DIFF (code changes) ---',
+        diffTruncated,
+      ].join('\n');
+
+      try {
+        let result = '';
+        const opts: Parameters<typeof query>[0]['options'] = {
+          cwd: project.path,
+          permissionMode: 'plan' as const,
+          abortController: new AbortController(),
+          env: buildClaudeEnv(),
+          maxTurns: 1,
+        };
+        for await (const msg of query({ prompt, options: opts })) {
+          const ev = msg as unknown as Record<string, unknown>;
+          if (ev.type === 'assistant' && typeof ev.message === 'object' && ev.message) {
+            const content = (ev.message as { content?: unknown[] }).content;
+            if (Array.isArray(content)) {
+              for (const b of content) {
+                if (typeof b === 'object' && b && (b as { type: string }).type === 'text') {
+                  result += (b as { text: string }).text;
+                }
+              }
+            }
+          }
+        }
+        return Response.json({ message: result.trim() });
+      } catch (err) {
+        log.error('generate-commit-msg', 'failed', { err: String(err) });
+        return Response.json(
+          { error: err instanceof Error ? err.message : String(err) },
+          { status: 500 },
+        );
+      }
     }
 
     if (url.pathname === '/api/git/stage' && req.method === 'POST') {
@@ -2636,6 +2989,7 @@ const server = Bun.serve<WsData, {}>({
             msg.permissionMode,
             (m) => { try { ws.send(JSON.stringify(m)); } catch { /* closed */ } },
             (ac) => { ws.data.activeAbort = ac; },
+            msg.attachments,
           );
         } catch (err) {
           ws.send(JSON.stringify({
@@ -2669,3 +3023,36 @@ log.info('boot', 'permission', { mode: PERMISSION_MODE });
   for (const w of diag.warnings) log.warn('boot', w);
   if (USE_API_KEY) log.info('boot', 'CLAUDE_WEB_USE_API_KEY=1 (API key opt-in)');
 }
+
+/* ---------- attachments: cron pruning originali ----------
+ * Cancellazione settimanale dei bucket year-month di .sublodex/uploads/
+ * più vecchi di RETENTION_DAYS. Le thumbnail (.sublodex/thumbs/) non
+ * vengono mai toccate — restano per il rendering dell'history anche
+ * quando l'originale è stato pruned. Vedi Attachment in src/lib/types.ts.
+ *
+ * Schedule: primo giro a 30s dal boot (lasciare al server di stabilizzarsi),
+ * poi ogni PRUNE_INTERVAL_MS. Su crash del server il prune semplicemente
+ * scatta al boot successivo dopo 30s, niente persistenza necessaria. */
+async function pruneAllProjects(): Promise<void> {
+  for (const p of settings.projects) {
+    try {
+      let result: { deletedBuckets: number };
+      if (p.remote) {
+        result = await pruneOriginalsRemote(p.remote, p.path, RETENTION_DAYS, sshExec);
+      } else {
+        result = await pruneOriginalsLocal(p.path, RETENTION_DAYS);
+      }
+      if (result.deletedBuckets > 0) {
+        log.info('prune', 'ok', {
+          project: p.id, deletedBuckets: result.deletedBuckets,
+        });
+      }
+    } catch (err) {
+      log.warn('prune', 'failed', {
+        project: p.id, err: (err as Error).message,
+      });
+    }
+  }
+}
+setTimeout(() => { void pruneAllProjects(); }, 30_000);
+setInterval(() => { void pruneAllProjects(); }, PRUNE_INTERVAL_MS);

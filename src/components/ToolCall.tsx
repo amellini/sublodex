@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { UIBlock } from '../lib/types';
 import { useStore } from '../lib/store';
+import { useUI } from '../lib/ui';
 
 type ToolBlock = Extract<UIBlock, { kind: 'tool' }>;
 type Variant = 'read' | 'edit' | 'bash' | 'search' | 'web' | 'task' | 'default';
@@ -24,6 +25,7 @@ export function ToolCall({ block }: { block: ToolBlock }) {
   const hasError = !!block.result?.isError;
   const [open, setOpen] = useState(false);
   const setActiveFile = useStore((s) => s.setActiveFile);
+  const openEditorPanel = useUI((s) => s.openEditorPanel);
   const variant = variantOf(block.name);
 
   // niente auto-expand: l'errore è spesso una recovery di claude (file already exists,
@@ -36,7 +38,7 @@ export function ToolCall({ block }: { block: ToolBlock }) {
 
   const onPathClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (filePath) setActiveFile(filePath);
+    if (filePath) { setActiveFile(filePath); openEditorPanel(); }
   };
 
   return (

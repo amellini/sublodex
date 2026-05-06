@@ -1,21 +1,27 @@
 import { create } from 'zustand';
 
-export type SidebarMode = 'sessions' | 'files' | 'git';
+/** Quale sezione è aperta nel pannello destro. `null` = tutto chiuso (rail soltanto). */
+export type RightPanelMode = 'files' | 'git' | 'editor' | null;
 
 type UIState = {
   settingsOpen: boolean;
+  /** Sidebar sinistra (sessions list) — espansa o collassata in rail. */
   sidebarOpen: boolean;
-  sidebarMode: SidebarMode;
   terminalOpen: boolean;
   themePickerOpen: boolean;
-  /** id del comando da espandere quando la sidebar viene aperta da una rail icon */
-  pendingExpandCommand?: string;
   /** quick-open modal (fuzzy finder file, ⌘P) */
   quickOpenOpen: boolean;
   /** project-switcher modal (fuzzy finder progetti, ⌘O) */
   projectSwitcherOpen: boolean;
+  /** Pannello destro: quale sezione è visibile. `null` = solo rail icone. */
+  rightPanelMode: RightPanelMode;
+  setRightPanelMode: (mode: RightPanelMode) => void;
+  /** Toggle: se mode è già attivo → chiude (`null`); altrimenti apre quel mode. */
+  toggleRightPanel: (mode: Exclude<RightPanelMode, null>) => void;
+  /** Apre il pannello destro su 'editor' (usato dopo un setActiveFile programmatico). */
+  openEditorPanel: () => void;
   /** true/false dopo il primo poll di /api/git/status per il progetto attivo;
-   *  null = non ancora controllato. Usato per nascondere il tab git se non
+   *  null = non ancora controllato. Usato per nascondere l'icona git se non
    *  serve. Refreshato dal GitPanel ad ogni mount/refresh. */
   isGitRepo: boolean | null;
   setIsGitRepo: (v: boolean | null) => void;
@@ -30,10 +36,6 @@ type UIState = {
   openSettings: () => void;
   closeSettings: () => void;
   toggleSidebar: () => void;
-  openSidebarWith: (commandId?: string) => void;
-  setSidebarMode: (mode: SidebarMode) => void;
-  openFilesPanel: () => void;
-  clearPendingExpand: () => void;
   toggleTerminal: () => void;
   openThemePicker: () => void;
   closeThemePicker: () => void;
@@ -46,16 +48,15 @@ type UIState = {
 export const useUI = create<UIState>((set) => ({
   settingsOpen: false,
   sidebarOpen: false,
-  sidebarMode: 'sessions',
   terminalOpen: false,
+  rightPanelMode: null,
+  setRightPanelMode: (mode) => set({ rightPanelMode: mode }),
+  toggleRightPanel: (mode) =>
+    set((s) => ({ rightPanelMode: s.rightPanelMode === mode ? null : mode })),
+  openEditorPanel: () => set({ rightPanelMode: 'editor' }),
   openSettings: () => set({ settingsOpen: true }),
   closeSettings: () => set({ settingsOpen: false }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
-  openSidebarWith: (commandId) =>
-    set({ sidebarOpen: true, sidebarMode: 'files', pendingExpandCommand: commandId }),
-  setSidebarMode: (mode) => set({ sidebarMode: mode }),
-  openFilesPanel: () => set({ sidebarOpen: true, sidebarMode: 'files' }),
-  clearPendingExpand: () => set({ pendingExpandCommand: undefined }),
   toggleTerminal: () => set((s) => ({ terminalOpen: !s.terminalOpen })),
   themePickerOpen: false,
   openThemePicker: () => set({ themePickerOpen: true }),

@@ -3,6 +3,7 @@ import { parsePartial } from './partialJson';
 import { useSettings } from './settings';
 import type {
   AssistantEvent,
+  Attachment,
   PlanUsage,
   ResultEvent,
   StreamEvent,
@@ -73,7 +74,7 @@ type Store = {
   totalOutput: number;
   turns: number;
 
-  appendUserMessage: (text: string) => void;
+  appendUserMessage: (text: string, attachments?: Attachment[]) => void;
   appendSystemMessage: (text: string) => void;
   appendUsageCard: (data: PlanUsage) => void;
   ingestEvent: (event: StreamEvent) => void;
@@ -174,9 +175,15 @@ export const useStore = create<Store>((set, get) => ({
   totalOutput: 0,
   turns: 0,
 
-  appendUserMessage: (text) =>
+  appendUserMessage: (text, attachments) =>
     set((s) => ({
-      messages: [...s.messages, { id: localId(), role: 'user', blocks: [{ kind: 'text', text }] }],
+      messages: [...s.messages, {
+        id: localId(),
+        role: 'user',
+        blocks: [{ kind: 'text', text }],
+        // Salviamo solo array non-vuoti per non gonfiare il JSON persistito.
+        ...(attachments && attachments.length > 0 ? { attachments } : {}),
+      }],
       lastError: undefined,
     })),
 

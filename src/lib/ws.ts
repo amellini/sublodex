@@ -1,4 +1,4 @@
-import type { ClientMessage, ServerMessage } from './types';
+import type { Attachment, ClientMessage, ServerMessage } from './types';
 import { useStore } from './store';
 import { useSettings, activeProject } from './settings';
 import { useUI } from './ui';
@@ -122,14 +122,12 @@ function rawSend(msg: ClientMessage): boolean {
   return true;
 }
 
-export function sendPrompt(prompt: string): void {
+export function sendPrompt(prompt: string, attachments: Attachment[] = []): void {
   const { sessionId, model, permissionMode, appendUserMessage, setStreaming, setError } =
     useStore.getState();
-  appendUserMessage(prompt);
+  appendUserMessage(prompt, attachments);
   setStreaming(true);
   setError(undefined);
-  // Snapshot del progetto + sessione attivi adesso: se l'utente li cambia
-  // prima del `done`, vogliamo persistere comunque qui (issue #2).
   const settings = useSettings.getState().settings;
   const active = activeProject(settings);
   if (active) {
@@ -139,7 +137,14 @@ export function sendPrompt(prompt: string): void {
     _pendingProjectId = null;
     _pendingSessionFsId = undefined;
   }
-  const ok = rawSend({ type: 'send', prompt, sessionId, model, permissionMode });
+  const ok = rawSend({
+    type: 'send',
+    prompt,
+    sessionId,
+    model,
+    permissionMode,
+    attachments: attachments.length > 0 ? attachments : undefined,
+  });
   if (!ok) {
     setError('server not ready — try again in a moment');
     setStreaming(false);

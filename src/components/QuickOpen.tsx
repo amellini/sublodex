@@ -28,6 +28,7 @@ export function QuickOpen() {
   const open = useUI((s) => s.quickOpenOpen);
   const close = useUI((s) => s.closeQuickOpen);
   const setActiveFile = useStore((s) => s.setActiveFile);
+  const openEditorPanel = useUI((s) => s.openEditorPanel);
   const settings = useSettings((s) => s.settings);
   const activeId = activeProject(settings)?.id;
 
@@ -82,6 +83,7 @@ export function QuickOpen() {
 
   const choose = (path: string) => {
     setActiveFile(path);
+    openEditorPanel();
     close();
   };
 

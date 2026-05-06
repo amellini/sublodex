@@ -115,7 +115,7 @@ export type ServerMessage =
   | { type: 'error'; error: string };
 
 export type ClientMessage =
-  | { type: 'send'; prompt: string; sessionId?: string; model?: string; permissionMode?: string }
+  | { type: 'send'; prompt: string; sessionId?: string; model?: string; permissionMode?: string; attachments?: Attachment[] }
   | { type: 'cancel' };
 
 /* ---- modello UI ---- */
@@ -124,6 +124,45 @@ export type UIMessage = {
   id: string;
   role: 'user' | 'assistant' | 'system';
   blocks: UIBlock[];
+  /** Allegati immagine associati al turno utente. Mai presenti su
+   *  assistant/system. Le references agli originali (.sublodex/uploads/...)
+   *  vengono iniettate nella stringa `prompt` lato client prima del WS send,
+   *  così il backend Claude resta invariato. La UI usa SOLO i thumbnailPath
+   *  per il rendering in scrollback (vedi Attachment). */
+  attachments?: Attachment[];
+};
+
+/** Allegato immagine. Coppia (originale, thumbnail) generata al momento
+ *  dell'upload e persistita su `<project.path>/.sublodex/{uploads,thumbs}/`.
+ *
+ *  Lifecycle:
+ *   - originalPath: pruned dopo `retentionDays` (default 30) dal cron.
+ *   - thumbnailPath: keep forever — usata per renderizzare la history anche
+ *     quando l'originale non c'è più.
+ *
+ *  Il path passato a Claude nel prompt è SEMPRE `originalPath`. La UI
+ *  carica SEMPRE `thumbnailPath` come `<img src>`. */
+export type Attachment = {
+  /** uuid v4 senza trattini (32 hex). Identifica la coppia (originale, thumb).
+   *  Usato anche come basename del file. */
+  id: string;
+  /** Path relativo al `project.path`, es. `.sublodex/uploads/2026-05/<id>.png`.
+   *  Esiste solo finché non scatta il pruning. È il path che Claude legge. */
+  originalPath: string;
+  /** Path relativo al `project.path`, es. `.sublodex/thumbs/2026-05/<id>.webp`.
+   *  Esiste forever (modulo cancellazione manuale). */
+  thumbnailPath: string;
+  /** Mime dell'originale: `image/png` | `image/jpeg` | `image/webp` | `image/gif`. */
+  mime: string;
+  /** Dimensione originale in byte. Solo display (tooltip "1.2 MB"). */
+  size: number;
+  /** Dimensioni in pixel dell'originale. Servono al renderer per fissare
+   *  width/height su `<img>` ed evitare CLS durante il lazy-load. */
+  width?: number;
+  height?: number;
+  /** Nome originale del file se disponibile (drop, file picker). I paste
+   *  dalla clipboard di solito arrivano senza nome → undefined. */
+  filename?: string;
 };
 
 export type UIBlock =
