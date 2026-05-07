@@ -293,7 +293,7 @@ function StatusPill({ status, type }: { status: string; type?: string }) {
   );
 }
 
-function relTime(unixSeconds: number): string {
+export function relTime(unixSeconds: number): string {
   const ms = unixSeconds * 1000 - Date.now();
   if (ms <= 0) return 'now';
   const s = Math.floor(ms / 1000);

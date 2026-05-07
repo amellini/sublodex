@@ -17,6 +17,7 @@ function persistCurrentConversation(projectId: string, sessionFsId: string | und
     totalInput: s.totalInput,
     totalOutput: s.totalOutput,
     turns: s.turns,
+    lastTurnInput: s.lastTurnInput,
   }, sessionFsId);
 }
 
@@ -60,8 +61,15 @@ export function connect(): void {
     try {
       const msg = JSON.parse(e.data) as ServerMessage;
       const store = useStore.getState();
-      if (msg.type === 'event') store.ingestEvent(msg.event);
-      else if (msg.type === 'done') {
+      if (msg.type === 'event') {
+        store.ingestEvent(msg.event);
+        // Persisti subito dopo system/init: a questo punto il sessionId Claude
+        // è nel store e il messaggio utente è già in messages. Così anche se
+        // l'utente fa F5 *durante* lo streaming, il turno non va perso.
+        if (msg.event.type === 'system' && _pendingProjectId) {
+          persistCurrentConversation(_pendingProjectId, _pendingSessionFsId);
+        }
+      } else if (msg.type === 'done') {
         store.setStreaming(false);
         if (_pendingProjectId) persistCurrentConversation(_pendingProjectId, _pendingSessionFsId);
         _pendingProjectId = null;

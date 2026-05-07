@@ -9,6 +9,7 @@ export type ConversationSnapshot = {
   totalInput?: number;
   totalOutput?: number;
   turns?: number;
+  lastTurnInput?: number;
   /** id del file su disco usato per questa sessione (server-side) */
   __sessionFsId?: string;
 };

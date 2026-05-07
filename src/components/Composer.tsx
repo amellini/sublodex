@@ -9,11 +9,12 @@ import { splitBlock } from '@milkdown/prose/commands';
 import { keymap } from '@milkdown/prose/keymap';
 import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/react';
 import { replaceAll } from '@milkdown/utils';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { cancel, sendPrompt } from '../lib/ws';
 import { useStore } from '../lib/store';
 import { useSettings, activeProject } from '../lib/settings';
 import { MODELS } from '../lib/commands';
+import type { PlanUsage } from '../lib/types';
 import {
   type PendingAttachment,
   imagesFromFileList,
@@ -25,6 +26,13 @@ import {
   validateImageFile,
 } from '../lib/attachments';
 import { ComposerAttachmentChip } from './ComposerAttachments';
+import { UsagePop } from './UsagePop';
+
+/** Dimensione context window per modello. */
+function contextWindowSize(model: string | undefined): number {
+  if (model?.includes('opus-4-7')) return 1_000_000;
+  return 200_000;
+}
 
 const placeholderKey = new PluginKey('composer-placeholder');
 
@@ -53,9 +61,12 @@ function makePlaceholderPlugin(text: string) {
 
 function shortModel(m: string | undefined): string {
   if (!m) return 'model';
-  if (m.includes('opus'))   return 'opus';
-  if (m.includes('sonnet')) return 'sonnet';
-  if (m.includes('haiku'))  return 'haiku';
+  if (m.includes('opus-4-7'))  return 'opus 4.7';
+  if (m.includes('opus-4-6'))  return 'opus 4.6';
+  if (m.includes('opus'))      return 'opus';
+  if (m.includes('sonnet-4-6')) return 'sonnet 4.6';
+  if (m.includes('sonnet'))    return 'sonnet';
+  if (m.includes('haiku'))     return 'haiku';
   return m;
 }
 
@@ -78,36 +89,41 @@ function makeImagePastePlugin(onImages: (files: File[]) => void) {
   });
 }
 
+const DRAFT_KEY = 'sublodex:composer_draft';
+
 function MilkdownEditor({
   submitRef,
   resetRef,
   mdRef,
   onContentChange,
+  onDraftSave,
   placeholder,
   onPasteImages,
+  initialValue,
 }: {
   submitRef: React.MutableRefObject<() => void>;
-  /** Settato dal MilkdownEditor: il parent lo invoca dopo sendPrompt per
-   *  svuotare visivamente l'editor (replaceAll('')). */
   resetRef: React.MutableRefObject<() => void>;
   mdRef: React.MutableRefObject<string>;
   onContentChange: (has: boolean) => void;
+  onDraftSave: (md: string) => void;
   placeholder: string;
   onPasteImages: (files: File[]) => void;
+  initialValue: string;
 }) {
-  // Tieni un ref al callback paste per evitare di rigenerare il plugin ad ogni
-  // re-render (Milkdown ricrea l'editor solo al primo mount).
   const onPasteRef = useRef(onPasteImages);
   useEffect(() => { onPasteRef.current = onPasteImages; }, [onPasteImages]);
+  const onDraftRef = useRef(onDraftSave);
+  useEffect(() => { onDraftRef.current = onDraftSave; }, [onDraftSave]);
 
   const { get } = useEditor((root) =>
     Editor.make()
       .config((ctx) => {
         ctx.set(rootCtx, root);
-        ctx.set(defaultValueCtx, '');
+        ctx.set(defaultValueCtx, initialValue);
         ctx.get(listenerCtx).markdownUpdated((_c, md) => {
           mdRef.current = md ?? '';
           onContentChange(!!md?.trim());
+          onDraftRef.current(md ?? '');
         });
         ctx.update(prosePluginsCtx, (ps) => [
           keymap({
@@ -145,18 +161,73 @@ function MilkdownEditor({
 }
 
 export function Composer() {
-  const isStreaming  = useStore((s) => s.isStreaming);
-  const model        = useStore((s) => s.model);
-  const runtimeModel = useStore((s) => s.runtimeModel);
-  const setModel     = useStore((s) => s.setModel);
-  const resetSession = useStore((s) => s.resetSession);
-  const settings     = useSettings((s) => s.settings);
-  const project      = activeProject(settings);
+  const isStreaming   = useStore((s) => s.isStreaming);
+  const model         = useStore((s) => s.model);
+  const runtimeModel  = useStore((s) => s.runtimeModel);
+  const setModel      = useStore((s) => s.setModel);
+  const resetSession  = useStore((s) => s.resetSession);
+  const lastTurnInput      = useStore((s) => s.lastTurnInput);
+  const totalInput         = useStore((s) => s.totalInput);
+  const turns              = useStore((s) => s.turns);
+  const modelContextWindow = useStore((s) => s.modelContextWindow);
+  const settings           = useSettings((s) => s.settings);
+  const project            = activeProject(settings);
 
-  const [hasContent, setHasContent] = useState(false);
+  // Usa il context window reale riportato dall'SDK; fallback al valore per modello.
+  const ctxSize = modelContextWindow > 0 ? modelContextWindow : contextWindowSize(model ?? runtimeModel);
+  const ctxPct  = lastTurnInput > 0 ? Math.min(1, lastTurnInput / ctxSize) : 0;
+  const ctxTone = ctxPct >= 0.9 ? 'danger' : ctxPct >= 0.7 ? 'warn' : 'ok';
+
+  /** Formatta un numero di token in forma compatta: 28450 → "28.5k", 200000 → "200k" */
+  const fmtK = (n: number) =>
+    n >= 1_000_000 ? `${+(n / 1_000_000).toFixed(1)}M`
+    : n >= 1000    ? `${+(n / 1000).toFixed(1)}k`
+    : `${n}`;
+
+  const [initialDraft] = useState(() => localStorage.getItem(DRAFT_KEY) ?? '');
+  const [hasContent, setHasContent] = useState(() => !!initialDraft.trim());
   const [modelOpen, setModelOpen]   = useState(false);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
+
+  /* ---- usage popover ---- */
+  const [usageOpen, setUsageOpen]       = useState(false);
+  const [usageData, setUsageData]       = useState<PlanUsage | null>(null);
+  const [usageLoading, setUsageLoading] = useState(false);
+  const [usageError, setUsageError]     = useState<string | null>(null);
+  const usageRef = useRef<HTMLDivElement>(null);
+
+  const fetchUsage = useCallback(async () => {
+    setUsageLoading(true);
+    setUsageError(null);
+    try {
+      const res = await fetch('/api/usage');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setUsageData(await res.json() as PlanUsage);
+    } catch (e) {
+      setUsageError(e instanceof Error ? e.message : 'errore sconosciuto');
+    } finally {
+      setUsageLoading(false);
+    }
+  }, []);
+
+  const toggleUsage = () => {
+    if (!usageOpen) {
+      setUsageOpen(true);
+      void fetchUsage();
+    } else {
+      setUsageOpen(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!usageOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (!usageRef.current?.contains(e.target as Node)) setUsageOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [usageOpen]);
 
   const isStreamingRef = useRef(isStreaming);
   const mdRef          = useRef('');
@@ -315,14 +386,22 @@ export function Composer() {
   // Submit: gestito interamente qui per avere accesso ad attachments.
   // Il MilkdownEditor invoca submitRef.current() dal keymap Enter; il bottone
   // "send" idem.
+  const saveDraft = (md: string) => {
+    if (md.trim()) {
+      localStorage.setItem(DRAFT_KEY, md);
+    } else {
+      localStorage.removeItem(DRAFT_KEY);
+    }
+  };
+
   useEffect(() => {
     submitRef.current = () => {
       const text = mdRef.current.trim();
       const ready = attachmentsRef.current.filter((a) => a.status === 'done');
       const uploading = attachmentsRef.current.some((a) => a.status === 'uploading');
-      // Permetti send se c'è testo OPPURE almeno un allegato pronto.
       if ((!text && ready.length === 0) || isStreamingRef.current || uploading) return;
       sendPrompt(text, ready.map((a) => a.uploaded!));
+      localStorage.removeItem(DRAFT_KEY);
       attachmentsRef.current.forEach(revokePending);
       setAttachments([]);
       resetEditorRef.current();
@@ -353,16 +432,29 @@ export function Composer() {
             ))}
           </div>
         )}
-        <MilkdownProvider>
-          <MilkdownEditor
-            submitRef={submitRef}
-            resetRef={resetEditorRef}
-            mdRef={mdRef}
-            onContentChange={setHasContent}
-            placeholder={isStreaming ? 'claude is working…' : 'talk to claude…'}
-            onPasteImages={handleFiles}
-          />
-        </MilkdownProvider>
+        {/* Wrapper che cattura click nello spazio vuoto sotto il testo e
+            li re-dirige al ProseMirror. Necessario perché ProseMirror ha
+            height:auto (solo il testo), mentre il container .milkdown ha
+            min-height:72px — clic nell'area vuota non raggiungono l'editor. */}
+        <div
+          onClick={(e) => {
+            const pm = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.ProseMirror');
+            if (pm && !pm.contains(e.target as Node)) pm.focus();
+          }}
+        >
+          <MilkdownProvider>
+            <MilkdownEditor
+              submitRef={submitRef}
+              resetRef={resetEditorRef}
+              mdRef={mdRef}
+              onContentChange={setHasContent}
+              onDraftSave={saveDraft}
+              placeholder={isStreaming ? 'claude is working…' : 'talk to claude…'}
+              onPasteImages={handleFiles}
+              initialValue={initialDraft}
+            />
+          </MilkdownProvider>
+        </div>
         <div className="composer__bar">
           <span className="composer__hint">
             {uploadingCount > 0 ? (
@@ -377,6 +469,25 @@ export function Composer() {
               </>
             )}
           </span>
+
+          {/* context window bar — sempre visibile */}
+          <div
+            className={`composer__ctx composer__ctx--${ctxTone}`}
+            title={[
+              `ultimo turno:  ${lastTurnInput.toLocaleString()} / ${ctxSize.toLocaleString()} tok`,
+              `totale turni:  ${turns}`,
+              `input totale:  ${totalInput.toLocaleString()} tok (cumulativo × turni)`,
+            ].join('\n')}
+          >
+            <div className="composer__ctx-track">
+              <div className="composer__ctx-fill" style={{ width: `${ctxPct * 100}%` }} />
+              <span className="composer__ctx-label">
+                {ctxPct > 0
+                  ? `${Math.round(ctxPct * 100)}% · ${fmtK(lastTurnInput)} / ${fmtK(ctxSize)}`
+                  : `— / ${fmtK(ctxSize)}`}
+              </span>
+            </div>
+          </div>
 
           {/* file picker nascosto */}
           <input
@@ -399,7 +510,7 @@ export function Composer() {
           {!isStreaming && (
             <button
               className="composer__clear"
-              onClick={() => resetSession()}
+              onClick={() => { localStorage.removeItem(DRAFT_KEY); resetSession(); }}
               title="clear conversation (/clear)"
             >
               ⌫ clear
@@ -450,6 +561,34 @@ export function Composer() {
               send
             </button>
           )}
+
+          {/* usage popover */}
+          <div className="composer__usage-wrap" ref={usageRef}>
+            <button
+              className={`composer__usage-btn${usageOpen ? ' composer__usage-btn--active' : ''}`}
+              onClick={toggleUsage}
+              title="utilizzo piano"
+              type="button"
+            >
+              ≋
+            </button>
+            {usageOpen && (
+              <div className="composer__usage-pop">
+                {usageLoading && (
+                  <div className="composer__usage-loading">caricamento…</div>
+                )}
+                {usageError && !usageLoading && (
+                  <div className="composer__usage-error">
+                    errore: {usageError}
+                    <button onClick={() => void fetchUsage()}>riprova</button>
+                  </div>
+                )}
+                {usageData && !usageLoading && (
+                  <UsagePop data={usageData} />
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

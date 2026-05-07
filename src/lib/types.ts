@@ -37,7 +37,23 @@ export type ResultEvent = {
   result?: string;
   duration_ms?: number;
   total_cost_usd?: number;
-  usage?: { input_tokens: number; output_tokens: number };
+  usage?: {
+    input_tokens: number;
+    output_tokens: number;
+    /** Token letti dalla cache (già presenti nel context window) */
+    cache_read_input_tokens?: number;
+    /** Token scritti in cache in questo turno (anche loro nel context window) */
+    cache_creation_input_tokens?: number;
+  };
+  /** Per-model breakdown — contiene contextWindow e maxOutputTokens reali. */
+  modelUsage?: Record<string, {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadInputTokens: number;
+    cacheCreationInputTokens: number;
+    contextWindow: number;
+    maxOutputTokens: number;
+  }>;
   session_id?: string;
 };
 

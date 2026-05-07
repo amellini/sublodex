@@ -74,6 +74,16 @@ type Store = {
   totalOutput: number;
   turns: number;
 
+  /** Token totali dell'ultimo turno nel context window (input + cache_creation + cache_read).
+   *  È il valore corretto per "quanto contesto è in uso", perché Claude Code usa
+   *  il prompt caching: la maggior parte dei token sono cache_read e sarebbero
+   *  invisibili usando solo input_tokens. */
+  lastTurnInput: number;
+  lastTurnOutput: number;
+  /** Dimensione reale del context window del modello, ricavata da modelUsage.contextWindow.
+   *  0 = non ancora ricevuto (usa fallback 200k). */
+  modelContextWindow: number;
+
   appendUserMessage: (text: string, attachments?: Attachment[]) => void;
   appendSystemMessage: (text: string) => void;
   appendUsageCard: (data: PlanUsage) => void;
@@ -93,6 +103,7 @@ type Store = {
     messages?: UIMessage[];
     sessionId?: string | null;
     totalCost?: number; totalInput?: number; totalOutput?: number; turns?: number;
+    lastTurnInput?: number;
   }) => void;
 };
 
@@ -174,6 +185,9 @@ export const useStore = create<Store>((set, get) => ({
   totalInput: 0,
   totalOutput: 0,
   turns: 0,
+  lastTurnInput: 0,
+  lastTurnOutput: 0,
+  modelContextWindow: 0,
 
   appendUserMessage: (text, attachments) =>
     set((s) => ({
@@ -246,6 +260,9 @@ export const useStore = create<Store>((set, get) => ({
       totalInput: 0,
       totalOutput: 0,
       turns: 0,
+      lastTurnInput: 0,
+      lastTurnOutput: 0,
+      modelContextWindow: 0,
     });
   },
 
@@ -258,6 +275,9 @@ export const useStore = create<Store>((set, get) => ({
       totalInput: snap.totalInput ?? 0,
       totalOutput: snap.totalOutput ?? 0,
       turns: snap.turns ?? 0,
+      // lastTurnInput è persistito per mantenere la progress bar del context
+      // window visibile dopo un reload, anche senza inviare un nuovo messaggio.
+      lastTurnInput: snap.lastTurnInput ?? 0,
       // stato volatile sempre resettato
       runtimeModel: undefined,
       lastError: undefined,
@@ -265,6 +285,8 @@ export const useStore = create<Store>((set, get) => ({
       openFiles: [],
       activeFile: undefined,
       isStreaming: false,
+      lastTurnOutput: 0,
+      modelContextWindow: 0,
     });
   },
 
@@ -366,6 +388,9 @@ export const useStore = create<Store>((set, get) => ({
 
     if (event.type === 'result') {
       const r = event as ResultEvent;
+      // Debug temporaneo — rimuovere dopo conferma valori corretti.
+      // Apri DevTools → Console per vedere il payload completo.
+      console.debug('[sublodex:result] payload completo:', event);
       set((s) => {
         // In modalità typewriter, evita di wipare brutalmente: marca finished
         // così il tick può completare l'animazione e poi rimuovere le entry.
@@ -381,6 +406,23 @@ export const useStore = create<Store>((set, get) => ({
           totalInput: s.totalInput + (r.usage?.input_tokens ?? 0),
           totalOutput: s.totalOutput + (r.usage?.output_tokens ?? 0),
           turns: s.turns + 1,
+          // Il context window reale è la somma di tutti i token inviati all'API:
+          // - input_tokens: token nuovi (non cachati) del turno corrente
+          // - cache_read_input_tokens: token letti dalla cache (già nel contesto)
+          // - cache_creation_input_tokens: token scritti in cache per la prima volta
+          // Usare solo input_tokens darebbe valori bassissimi su sessioni lunghe
+          // con prompt caching attivo (subscription Pro/Max).
+          lastTurnInput: r.usage
+            ? (r.usage.input_tokens ?? 0)
+              + (r.usage.cache_read_input_tokens ?? 0)
+              + (r.usage.cache_creation_input_tokens ?? 0)
+            : s.lastTurnInput,
+          lastTurnOutput: r.usage?.output_tokens ?? s.lastTurnOutput,
+          // Legge il context window reale dal primo entry di modelUsage
+          // (tutti i modelli di un turno hanno lo stesso contextWindow).
+          modelContextWindow: r.modelUsage
+            ? (Object.values(r.modelUsage)[0]?.contextWindow ?? s.modelContextWindow)
+            : s.modelContextWindow,
           messages: s.messages.map((m) => ({
             ...m,
             blocks: m.blocks.map((b) =>

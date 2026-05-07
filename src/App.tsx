@@ -12,8 +12,96 @@ import { QuickOpen } from './components/QuickOpen';
 import { ProjectSwitcher } from './components/ProjectSwitcher';
 import { Extensions } from './components/Extensions';
 import { HeaderCommandPalette } from './components/HeaderCommandPalette';
+import { HeaderMenu, type HeaderMenuItem } from './components/HeaderMenu';
 import { useScopedTheme } from './components/ThemeApplier';
 import { conversationToMarkdown, downloadMarkdown } from './lib/exportConversation';
+
+/** Costruisce le voci del menu header in base allo stato corrente.
+ *  Estratta come funzione pura (fuori dal component) per chiarezza:
+ *  l'array è "data" e tenerlo separato dal JSX rende ovvio cosa è
+ *  configurazione vs cosa è layout. */
+function buildHeaderMenuItems(args: {
+  openQuickOpen: () => void;
+  messageCount: number;
+  activeName?: string;
+  terminalOpen: boolean;
+  toggleTerminal: () => void;
+  openExtensions: () => void;
+  openThemePicker: () => void;
+  openSettings: () => void;
+}): HeaderMenuItem[] {
+  const {
+    openQuickOpen, messageCount, activeName,
+    terminalOpen, toggleTerminal,
+    openExtensions, openThemePicker, openSettings,
+  } = args;
+
+  const items: (HeaderMenuItem | null)[] = [
+    {
+      kind: 'action',
+      id: 'find',
+      label: 'find',
+      icon: '🔍',
+      title: 'find file (⌘P or ⌘K)',
+      onClick: openQuickOpen,
+    },
+    // Export è condizionale: se non ci sono messaggi, l'azione è priva di senso.
+    // Coerente col comportamento precedente (button completamente nascosto).
+    messageCount > 0
+      ? {
+          kind: 'action' as const,
+          id: 'export',
+          label: 'export',
+          icon: '⇣',
+          title: 'export conversation as markdown',
+          onClick: () => {
+            const msgs = useStore.getState().messages;
+            if (msgs.length === 0) return;
+            const slug = (activeName ?? 'conversation').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+            const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+            downloadMarkdown(`${slug}-${stamp}.md`, conversationToMarkdown(msgs, activeName));
+          },
+        }
+      : null,
+    { kind: 'divider' },
+    {
+      kind: 'action',
+      id: 'terminal',
+      label: terminalOpen ? 'close terminal' : 'terminal',
+      icon: '>_',
+      active: terminalOpen,
+      title: terminalOpen ? 'close terminal' : 'open terminal in project root',
+      onClick: toggleTerminal,
+    },
+    {
+      kind: 'action',
+      id: 'extensions',
+      label: 'extensions',
+      icon: '🔌',
+      title: 'installed plugins, MCP servers, hooks',
+      onClick: openExtensions,
+    },
+    {
+      kind: 'action',
+      id: 'theme',
+      label: 'theme',
+      icon: '🎨',
+      title: 'theme',
+      onClick: openThemePicker,
+    },
+    { kind: 'divider' },
+    {
+      kind: 'action',
+      id: 'projects',
+      label: 'projects',
+      icon: '📁',
+      title: 'manage projects & settings',
+      onClick: openSettings,
+    },
+  ];
+  // Filter dei null (export quando assente) preservando il narrowing del type.
+  return items.filter((x): x is HeaderMenuItem => x !== null);
+}
 
 export default function App() {
   const appRef = useRef<HTMLDivElement>(null);
@@ -172,44 +260,16 @@ export default function App() {
             new session
           </button>
         )}
-        <button
-          className="header__btn"
-          onClick={openQuickOpen}
-          title="find file (⌘P or ⌘K)"
-        >
-          🔍 find
-        </button>
-        {messageCount > 0 && (
-          <button
-            className="header__btn"
-            onClick={() => {
-              const msgs = useStore.getState().messages;
-              if (msgs.length === 0) return;
-              const slug = (active?.name ?? 'conversation').toLowerCase().replace(/[^a-z0-9]+/g, '-');
-              const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-              downloadMarkdown(`${slug}-${stamp}.md`, conversationToMarkdown(msgs, active?.name));
-            }}
-            title="export conversation as markdown"
-          >
-            ⇣ export
-          </button>
-        )}
-        <button
-          className={`header__btn ${terminalOpen ? 'header__btn--active' : ''}`}
-          onClick={toggleTerminal}
-          title={terminalOpen ? 'close terminal' : 'open terminal in project root'}
-        >
-          {'>_ terminal'}
-        </button>
-        <button className="header__btn" onClick={openExtensions} title="installed plugins, MCP servers, hooks">
-          🔌 extensions
-        </button>
-        <button className="header__btn" onClick={openThemePicker} title="theme">
-          🎨 theme
-        </button>
-        <button className="header__btn" onClick={openSettings}>
-          projects
-        </button>
+        <HeaderMenu items={buildHeaderMenuItems({
+          openQuickOpen,
+          messageCount,
+          activeName: active?.name,
+          terminalOpen,
+          toggleTerminal,
+          openExtensions,
+          openThemePicker,
+          openSettings,
+        })} />
       </header>
 
       <main className="main">
