@@ -4,6 +4,8 @@ import { useSettings, activeProject } from './settings';
 import { useUI } from './ui';
 import { saveConversation } from './conversation';
 import { wsTokenQuery } from './auth';
+import { useOpenspecState } from './openspecState';
+import { buildArchivePrompt, SYNC_SENTINEL } from './openspecPrompts';
 
 // projectId/sessionFsId vengono catturati a `sendPrompt` e passati qui:
 // se l'utente cambia progetto durante lo stream, vogliamo persistere la
@@ -74,6 +76,10 @@ export function connect(): void {
         if (_pendingProjectId) persistCurrentConversation(_pendingProjectId, _pendingSessionFsId);
         _pendingProjectId = null;
         _pendingSessionFsId = undefined;
+        // Hook per i comandi opsx: il `done` è il segnale "Claude ha finito il
+        // turno". Lo usiamo per chiudere il loop su Apply (marca applied),
+        // Archive (rimuove + reload tree), Propose (reload tree).
+        void handleOpsxDone();
       }
       else if (msg.type === 'error') {
         store.setError(msg.error);
@@ -81,6 +87,9 @@ export function connect(): void {
         if (_pendingProjectId) persistCurrentConversation(_pendingProjectId, _pendingSessionFsId);
         _pendingProjectId = null;
         _pendingSessionFsId = undefined;
+        // Su errore: NON marchiamo applied/clear, ma resettiamo il pending così
+        // il prossimo lancio non riceve un side-effect tardivo.
+        useOpenspecState.getState().setPending(null);
       }
     } catch (err) {
       console.error('ws parse error:', err);
@@ -163,4 +172,79 @@ export function sendPrompt(prompt: string, attachments: Attachment[] = []): void
 
 export function cancel(): void {
   rawSend({ type: 'cancel' });
+}
+
+/** Evento custom DOM emesso quando un comando opsx archive/propose è
+ *  completato e il tree va re-fetchato. OpenspecTree monta un listener su
+ *  questo evento per chiamare la propria `load()`. Il custom event evita di
+ *  passare callback attraverso store/props per un cross-cutting concern
+ *  occasionale. */
+export const OPENSPEC_TREE_REFRESH_EVENT = 'sublodex:openspec-tree-refresh';
+
+async function handleOpsxDone(): Promise<void> {
+  const opsx = useOpenspecState.getState();
+  const pending = opsx.pending;
+  if (!pending) return;
+  if (pending.kind === 'apply') {
+    opsx.setPending(null);
+    await opsx.markApplied(pending.changeDir);
+  } else if (pending.kind === 'archive') {
+    opsx.setPending(null);
+    await opsx.clearApplied(pending.changeDir);
+    window.dispatchEvent(new Event(OPENSPEC_TREE_REFRESH_EVENT));
+  } else if (pending.kind === 'propose') {
+    opsx.setPending(null);
+    window.dispatchEvent(new Event(OPENSPEC_TREE_REFRESH_EVENT));
+  } else if (pending.kind === 'archive-batch') {
+    // Caso 1: autoSync=false e questo è il done della "fase sync-prompt".
+    // Cerchiamo il sentinella nell'ultimo messaggio assistente: se c'è,
+    // mettiamo in pausa la queue (awaitingSync=true) e aspettiamo che la
+    // SyncDecisionModal raccolga la scelta dell'utente. Niente shift.
+    if (!pending.autoSync && !pending.awaitingSync && lastAssistantContains(SYNC_SENTINEL)) {
+      opsx.setPending({ ...pending, awaitingSync: true });
+      return;
+    }
+    // Caso 2: questo è il done dell'archive completato (auto-sync mode, oppure
+    // dopo che l'utente ha già risposto YES/NO al sentinella). Se proveniamo
+    // dal pause-sync, l'utente ha azzerato awaitingSync prima di inviare la
+    // reply (vedi SyncDecisionModal); qui siamo sempre con awaitingSync=false.
+    const justFinished = pending.current;
+    const cleanupKey = `openspec/changes/${justFinished}`;
+    if (useOpenspecState.getState().applied[cleanupKey]) {
+      await opsx.clearApplied(cleanupKey);
+    }
+    const remaining = pending.queue.slice();
+    if (remaining.length === 0) {
+      opsx.setPending(null);
+      window.dispatchEvent(new Event(OPENSPEC_TREE_REFRESH_EVENT));
+      return;
+    }
+    const next = remaining.shift()!;
+    opsx.setPending({
+      kind: 'archive-batch',
+      queue: remaining,
+      current: next,
+      total: pending.total,
+      done: pending.done + 1,
+      autoSync: pending.autoSync,
+      awaitingSync: false,
+    });
+    sendPrompt(buildArchivePrompt(next, pending.autoSync));
+  }
+}
+
+/** Cerca una sottostringa nell'ultimo messaggio assistant del thread.
+ *  Concatena solo i text-block (tool_use sono altri); ritorna false se
+ *  non c'è ancora alcun messaggio assistente. */
+function lastAssistantContains(needle: string): boolean {
+  const messages = useStore.getState().messages;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role !== 'assistant') continue;
+    for (const b of m.blocks) {
+      if (b.kind === 'text' && b.text.includes(needle)) return true;
+    }
+    return false; // primo assistente trovato non contiene → stop
+  }
+  return false;
 }

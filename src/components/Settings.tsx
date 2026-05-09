@@ -89,13 +89,30 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
   const setAsActive = (id: string) => setActiveId(id);
 
+  const [browsing, setBrowsing] = useState(false);
   const browse = async () => {
     setBrowseError(null);
+    setBrowsing(true);
+    // Watchdog client-side: il proxy Vite ha timeout 60s, ma se il dialog
+    // nativo non torna ne approfittiamo per spegnere lo stato di loading
+    // e mostrare un errore comprensibile invece di un crash JSON.parse.
+    const ac = new AbortController();
+    const timeout = setTimeout(() => ac.abort(), 45_000);
     try {
-      const r = await fetch('/api/pick-folder', { method: 'POST' });
-      const j = await r.json();
+      const r = await fetch('/api/pick-folder', { method: 'POST', signal: ac.signal });
+      const text = await r.text();
+      // Se il proxy ha restituito HTML (fallback SPA dopo timeout), salviamo
+      // l'utente da un cryptic "Unexpected token <" mostrando un messaggio
+      // chiaro e azionabile invece.
+      if (text.trimStart().startsWith('<')) {
+        setBrowseError('folder picker did not respond — paste the path manually instead');
+        return;
+      }
+      let j: { path?: string; error?: string; canceled?: boolean };
+      try { j = JSON.parse(text); }
+      catch { setBrowseError('invalid response from folder picker'); return; }
       if (j.path) {
-        const seg = (j.path as string).split(/[\/\\]/).filter(Boolean).pop() ?? '';
+        const seg = j.path.split(/[\/\\]/).filter(Boolean).pop() ?? '';
         if (selected) {
           const patch: Partial<Project> = { path: j.path };
           if (
@@ -111,7 +128,14 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         setBrowseError(j.error);
       }
     } catch (err) {
-      setBrowseError(String(err));
+      if ((err as { name?: string })?.name === 'AbortError') {
+        setBrowseError('folder picker timed out — paste the path manually instead');
+      } else {
+        setBrowseError(String(err));
+      }
+    } finally {
+      clearTimeout(timeout);
+      setBrowsing(false);
     }
   };
 
@@ -266,9 +290,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                       placeholder={selected.remote ? '/home/me/myproj  (path on remote)' : '/Users/me/code/myproj'}
                     />
                     {!selected.remote && (
-                      <button className="field__browse" onClick={browse} type="button">
+                      <button className="field__browse" onClick={browse} type="button" disabled={browsing}>
                         <FolderIcon size={14} />
-                        <span>browse</span>
+                        <span>{browsing ? 'opening…' : 'browse'}</span>
                       </button>
                     )}
                   </div>

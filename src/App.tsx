@@ -11,6 +11,7 @@ import { ThemePicker } from './components/ThemePicker';
 import { QuickOpen } from './components/QuickOpen';
 import { ProjectSwitcher } from './components/ProjectSwitcher';
 import { Extensions } from './components/Extensions';
+import { SyncDecisionModal } from './components/SyncDecisionModal';
 import { HeaderCommandPalette } from './components/HeaderCommandPalette';
 import { HeaderMenu, type HeaderMenuItem } from './components/HeaderMenu';
 import { useScopedTheme } from './components/ThemeApplier';
@@ -217,6 +218,23 @@ export default function App() {
     return () => { cancelled = true; };
   }, [active?.id, setIsGitRepo]);
 
+  // hasOpenspec del progetto attivo: vero se nella root c'è una cartella
+  // `openspec/`. Pilota la visibilità dell'icona OpenSpec sul rail sinistro
+  // e dei mode-tab della sidebar.
+  const setHasOpenspec = useUI((s) => s.setHasOpenspec);
+  useEffect(() => {
+    if (!active?.id) return;
+    setHasOpenspec(null);
+    let cancelled = false;
+    fetch('/api/openspec/status')
+      .then((r) => (r.ok ? r.json() : { enabled: false }))
+      .then((j: { enabled: boolean }) => {
+        if (!cancelled) setHasOpenspec(!!j.enabled);
+      })
+      .catch(() => { if (!cancelled) setHasOpenspec(false); });
+    return () => { cancelled = true; };
+  }, [active?.id, setHasOpenspec]);
+
   return (
     <div className="app" ref={appRef}>
       <header className="header">
@@ -281,6 +299,7 @@ export default function App() {
       {extensionsOpen && <Extensions onClose={closeExtensions} />}
       <QuickOpen />
       <ProjectSwitcher />
+      <SyncDecisionModal />
     </div>
   );
 }

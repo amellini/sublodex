@@ -23,6 +23,17 @@ type PluginInstall = {
     mcpServers: number;
     lspServers: number;
   };
+  activeForProject: boolean;
+};
+
+type SkillEntry = {
+  id: string;
+  name: string;
+  pluginId: string;
+  description?: string;
+  scope: 'user' | 'project' | 'plugin';
+  skillPath: string;
+  activeForProject: boolean;
 };
 
 /** Shape del campo `source` su un Marketplace.
@@ -50,6 +61,7 @@ type McpServer = {
   env?: Record<string, string>;
   url?: string;
   scope: 'user' | 'project';
+  activeForProject: boolean;
 };
 
 type HookEntry = {
@@ -58,6 +70,7 @@ type HookEntry = {
   command: string;
   type?: string;
   scope: 'user' | 'project';
+  activeForProject: boolean;
 };
 
 type ExtensionPackage = {
@@ -65,6 +78,7 @@ type ExtensionPackage = {
   packageRoot: string;
   hooks: Array<{ event: string; matcher?: string; scope: 'user' | 'project' }>;
   scope: 'user' | 'project' | 'mixed';
+  activeForProject: boolean;
 };
 
 type PluginsState = {
@@ -73,10 +87,11 @@ type PluginsState = {
   marketplaces: Marketplace[];
   mcpServers: McpServer[];
   hooks: HookEntry[];
+  skills: SkillEntry[];
   paths: Record<string, string>;
 };
 
-type Tab = 'plugins' | 'extensions' | 'mcp' | 'hooks' | 'marketplaces';
+type Tab = 'plugins' | 'extensions' | 'skills' | 'mcp' | 'hooks' | 'marketplaces';
 
 export function Extensions({ onClose }: { onClose: () => void }) {
   const [data, setData] = useState<PluginsState | null>(null);
@@ -113,11 +128,12 @@ export function Extensions({ onClose }: { onClose: () => void }) {
     ? {
         plugins: data.plugins.length,
         extensions: data.extensionPackages.length,
+        skills: data.skills.length,
         mcp: data.mcpServers.length,
         hooks: data.hooks.length,
         marketplaces: data.marketplaces.length,
       }
-    : { plugins: 0, extensions: 0, mcp: 0, hooks: 0, marketplaces: 0 };
+    : { plugins: 0, extensions: 0, skills: 0, mcp: 0, hooks: 0, marketplaces: 0 };
 
   const enabledCount = data?.plugins.filter((p) => p.enabled).length ?? 0;
 
@@ -127,32 +143,41 @@ export function Extensions({ onClose }: { onClose: () => void }) {
         <div className="modal__head">
           <h2 className="modal__title">extensions</h2>
           <span className="ext__sub">
-            {enabledCount}/{counts.plugins} plugins enabled · {counts.mcp} MCP · {counts.hooks} hooks
+            {enabledCount}/{counts.plugins} plugins enabled · {counts.skills} skills · {counts.mcp} MCP · {counts.hooks} hooks
           </span>
-          <button className="header__btn" onClick={refresh} title="refresh">⟳</button>
-          <button className="header__btn" onClick={onClose}>✕</button>
         </div>
 
-        <div className="ext__tabs">
-          {([
-            ['plugins', 'Plugins', counts.plugins],
-            ['extensions', 'Extensions', counts.extensions],
-            ['mcp', 'MCP servers', counts.mcp],
-            ['hooks', 'Hooks', counts.hooks],
-            ['marketplaces', 'Marketplaces', counts.marketplaces],
-          ] as const).map(([id, label, n]) => (
+        <div className="ext__split">
+          <nav className="ext__tabs ext__tabs--vertical">
+            {([
+              ['plugins', 'Plugins', counts.plugins],
+              ['extensions', 'Extensions', counts.extensions],
+              ['skills', 'Skills', counts.skills],
+              ['mcp', 'MCP servers', counts.mcp],
+              ['hooks', 'Hooks', counts.hooks],
+              ['marketplaces', 'Marketplaces', counts.marketplaces],
+            ] as const).map(([id, label, n]) => (
+              <button
+                key={id}
+                className={`ext__tab ${tab === id ? 'ext__tab--active' : ''}`}
+                onClick={() => setTab(id)}
+              >
+                <span className="ext__tab-label">{label}</span>
+                <span className="ext__tab-count">{n}</span>
+              </button>
+            ))}
             <button
-              key={id}
-              className={`ext__tab ${tab === id ? 'ext__tab--active' : ''}`}
-              onClick={() => setTab(id)}
+              className="ext__tab ext__tab--action"
+              onClick={refresh}
+              title="refresh"
+              disabled={loading}
             >
-              <span>{label}</span>
-              <span className="ext__tab-count">{n}</span>
+              <span className="ext__tab-label">{loading ? 'refreshing…' : 'refresh'}</span>
+              <span className="ext__tab-count">⟳</span>
             </button>
-          ))}
-        </div>
+          </nav>
 
-        <div className="ext__body">
+          <div className="ext__body">
           {loading && <div className="ext__loading">loading…</div>}
           {error && <div className="ext__error">{error}</div>}
 
@@ -161,6 +186,9 @@ export function Extensions({ onClose }: { onClose: () => void }) {
           )}
           {!loading && !error && data && tab === 'extensions' && (
             <ExtensionPackagesList data={data} expanded={expanded} onToggle={toggleExpanded} />
+          )}
+          {!loading && !error && data && tab === 'skills' && (
+            <SkillsList data={data} expanded={expanded} onToggle={toggleExpanded} />
           )}
           {!loading && !error && data && tab === 'mcp' && (
             <McpList data={data} />
@@ -171,6 +199,7 @@ export function Extensions({ onClose }: { onClose: () => void }) {
           {!loading && !error && data && tab === 'marketplaces' && (
             <MarketplacesList data={data} />
           )}
+          </div>
         </div>
 
         <div className="modal__foot">
@@ -226,7 +255,7 @@ function PluginCard({ plugin, expanded, onToggle }: {
     exposes.commands + exposes.agents + exposes.skills +
     exposes.hooks + exposes.mcpServers + exposes.lspServers;
   return (
-    <div className={`ext-card ${plugin.enabled ? 'ext-card--enabled' : 'ext-card--disabled'}`}>
+    <div className={`ext-card ${plugin.enabled ? 'ext-card--enabled' : 'ext-card--disabled'}${plugin.activeForProject ? ' ext-card--project-active' : ''}`}>
       <button className="ext-card__head" onClick={onToggle}>
         <span className="ext-card__icon">{plugin.enabled ? '●' : '○'}</span>
         <div className="ext-card__title">
@@ -313,6 +342,76 @@ function DetailRow({ label, value, mono }: { label: string; value: string; mono?
   );
 }
 
+/* ---------- skills tab ---------- */
+
+function SkillsList({ data, expanded, onToggle }: {
+  data: PluginsState;
+  expanded: Set<string>;
+  onToggle: (id: string) => void;
+}) {
+  if (data.skills.length === 0) {
+    return (
+      <div className="ext__empty">
+        <div className="ext__empty-title">no skills available</div>
+        <div className="ext__empty-hint">
+          skills come from installed plugins (e.g. <code>mempalace</code>,
+          <code>{' '}anthropic-skills</code>) or from <code>~/.claude/skills/</code> /
+          <code>{' '}.claude/skills/</code>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="ext__grid">
+      {data.skills.map((s) => (
+        <SkillCard
+          key={s.id}
+          skill={s}
+          expanded={expanded.has(`skill::${s.id}`)}
+          onToggle={() => onToggle(`skill::${s.id}`)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function SkillCard({ skill, expanded, onToggle }: {
+  skill: SkillEntry;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const cls = `ext-card ext-card--skill ${skill.activeForProject ? 'ext-card--enabled ext-card--project-active' : 'ext-card--disabled'}`;
+  const scopeChip = skill.scope === 'plugin' ? skill.pluginId : skill.scope;
+  return (
+    <div className={cls}>
+      <button className="ext-card__head" onClick={onToggle}>
+        <span className="ext-card__icon">✦</span>
+        <div className="ext-card__title">
+          <span className="ext-card__name">{skill.name}</span>
+          <span className="ext-card__market">
+            {skill.scope === 'plugin' ? `@${skill.pluginId}` : `${skill.scope}-level`}
+          </span>
+        </div>
+        <span className={`ext-chip ext-chip--${skill.scope === 'project' ? 'project' : 'user'}`}>
+          {scopeChip}
+        </span>
+        <span className="ext-card__chev">{expanded ? '▴' : '▾'}</span>
+      </button>
+
+      {skill.description && (
+        <div className="ext-card__desc">{skill.description}</div>
+      )}
+
+      {expanded && (
+        <div className="ext-card__details">
+          <DetailRow label="id" value={skill.id} mono />
+          <DetailRow label="path" value={skill.skillPath} mono />
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---------- extension packages tab (npm hook-based extensions) ---------- */
 
 function ExtensionPackagesList({ data, expanded, onToggle }: {
@@ -353,7 +452,7 @@ function ExtensionPackageCard({ pkg, expanded, onToggle }: {
 }) {
   const events = new Set(pkg.hooks.map((h) => h.event));
   return (
-    <div className="ext-card ext-card--enabled">
+    <div className={`ext-card ext-card--enabled${pkg.activeForProject ? ' ext-card--project-active' : ''}`}>
       <button className="ext-card__head" onClick={onToggle}>
         <span className="ext-card__icon">⚡</span>
         <div className="ext-card__title">
@@ -421,7 +520,7 @@ function McpList({ data }: { data: PluginsState }) {
   return (
     <div className="ext__list">
       {data.mcpServers.map((s, i) => (
-        <div className="ext-mcp" key={`${s.scope}-${s.name}-${i}`}>
+        <div className={`ext-mcp${s.activeForProject ? ' ext-mcp--project-active' : ''}`} key={`${s.scope}-${s.name}-${i}`}>
           <div className="ext-mcp__head">
             <span className="ext-mcp__icon">◆</span>
             <span className="ext-mcp__name">{s.name}</span>
@@ -474,7 +573,7 @@ function HooksList({ data }: { data: PluginsState }) {
             <span className="ext-hook-group__count">{hooks.length}</span>
           </div>
           {hooks.map((h, i) => (
-            <div className="ext-hook" key={i}>
+            <div className={`ext-hook${h.activeForProject ? ' ext-hook--project-active' : ''}`} key={i}>
               <div className="ext-hook__line">
                 {h.matcher && <span className="ext-hook__matcher">{h.matcher}</span>}
                 <span className={`ext-chip ext-chip--${h.scope}`}>{h.scope}</span>

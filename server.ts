@@ -4,7 +4,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import { mkdir, readFile, writeFile, stat, readdir, access, rm } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, stat, readdir, access, rm, rename } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -48,8 +48,13 @@ if (process.platform !== 'win32') {
 /* ---------- env normalization ----------
  * Le .app macOS launchate da Finder/Launchpad ricevono un PATH minimale
  * (no Homebrew, no nvm, no asdf). Per `ssh` / `sshpass` servono i path
- * standard. Prepende quelli noti se mancano. */
-{
+ * standard. Prepende quelli noti se mancano.
+ *
+ * IMPORTANTE: skip su Windows. Il separatore PATH è `;`, non `:`, quindi
+ * splittando su `:` corromperemmo l'intero PATH (`C:\…;C:\…` diventerebbe
+ * garbage) e Bun.spawn non troverebbe più `powershell.exe` ecc. — bug noto
+ * che mandava in hang il folder picker. */
+if (process.platform !== 'win32') {
   const wantPaths = [
     '/opt/homebrew/bin',
     '/opt/homebrew/sbin',
@@ -97,6 +102,23 @@ const SSHPASS_BIN = whichBin('sshpass', [
   '/usr/bin/sshpass',
 ]);
 log.info('boot', 'sshpass resolved', { path: SSHPASS_BIN ?? '(not found)' });
+
+/** Path assoluto a PowerShell su Windows. Se l'eseguibile non c'è (PowerShell
+ *  Core, o un'installazione bizzarra) ricadiamo sul nome relativo e ci affidiamo
+ *  alla PATH lookup. Risolto al boot per non fare un fs check ad ogni request. */
+const WIN_POWERSHELL_BIN: string = (() => {
+  if (process.platform !== 'win32') return 'powershell.exe';
+  const candidates = [
+    'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+    'C:\\Windows\\SysWOW64\\WindowsPowerShell\\v1.0\\powershell.exe',
+  ];
+  const fs = require('fs');
+  for (const c of candidates) {
+    try { if (fs.existsSync(c)) return c; } catch { /* */ }
+  }
+  return 'powershell.exe';
+})();
+log.info('boot', 'powershell resolved', { path: WIN_POWERSHELL_BIN });
 
 const PORT = Number(process.env.PORT ?? 3001);
 /** Dove vive `settings.json` + `conversations/`.
@@ -1427,6 +1449,88 @@ async function listTree(rel: string, depth = 4): Promise<FileNode[]> {
   return out;
 }
 
+/** Variante di listTree con filtro estensioni: usata per OpenSpec dove vogliamo
+ *  solo .md/.yaml/.yml. Le directory vuote dopo il filtraggio vengono saltate
+ *  per non lasciare cartelle "fantasma" nel tree. */
+async function listTreeFiltered(rel: string, allowedExt: ReadonlySet<string>, depth = 8): Promise<FileNode[]> {
+  if (depth === 0) return [];
+  const abs = safeResolveInActive(rel);
+  if (!abs) return [];
+  let entries;
+  try { entries = await readdir(abs, { withFileTypes: true }); }
+  catch { return []; }
+  const out: FileNode[] = [];
+  for (const e of entries) {
+    if (e.name.startsWith('.')) continue;
+    const childRel = path.join(rel, e.name).replace(/\\/g, '/');
+    if (e.isDirectory()) {
+      const children = await listTreeFiltered(childRel, allowedExt, depth - 1);
+      if (children.length > 0) {
+        out.push({ name: e.name, path: childRel, isDir: true, children });
+      }
+    } else {
+      const ext = path.extname(e.name).toLowerCase();
+      if (allowedExt.has(ext)) {
+        out.push({ name: e.name, path: childRel, isDir: false });
+      }
+    }
+  }
+  out.sort((a, b) => (a.isDir === b.isDir ? a.name.localeCompare(b.name) : a.isDir ? -1 : 1));
+  return out;
+}
+
+const OPENSPEC_EXT = new Set(['.md', '.yaml', '.yml']);
+
+/** Lista openspec/ via SSH per progetti remoti. Stessa shape di listRemoteTree
+ *  ma confinata a `<root>/openspec` e filtrata per estensioni. */
+async function listRemoteOpenspecTree(remote: RemoteConfig, root: string): Promise<FileNode[]> {
+  const base = `${root.replace(/\/+$/, '')}/openspec`;
+  const cmd = `cd ${shellQuote(base)} && find . -mindepth 1 -maxdepth 8 \\( -name '.*' \\) -prune -o \\( -type f \\( -name '*.md' -o -name '*.yaml' -o -name '*.yml' \\) -print -o -type d -print \\) 2>/dev/null | head -2000`;
+  const r = await sshExec(remote, cmd);
+  const lines = r.stdout.split('\n').map((l) => l.trim()).filter((l) => l && l !== '.');
+  if (lines.length === 0) return [];
+  type N = FileNode & { _kids?: Map<string, N> };
+  const rootNode: N = { name: '.', path: '.', isDir: true, _kids: new Map() };
+  for (const raw of lines) {
+    const rel = raw.startsWith('./') ? raw.slice(2) : raw;
+    const segs = rel.split('/');
+    let cur = rootNode;
+    let acc = '';
+    for (let i = 0; i < segs.length; i++) {
+      const seg = segs[i];
+      acc = acc ? `${acc}/${seg}` : seg;
+      const isLast = i === segs.length - 1;
+      const isDir = !isLast || !OPENSPEC_EXT.has(path.extname(seg).toLowerCase());
+      if (!cur._kids) cur._kids = new Map();
+      let next = cur._kids.get(seg);
+      if (!next) {
+        next = { name: seg, path: `openspec/${acc}`, isDir, _kids: isDir ? new Map() : undefined };
+        cur._kids.set(seg, next);
+      }
+      cur = next;
+    }
+  }
+  // serializza, scartando dir senza figli foglia validi
+  const serialize = (n: N): FileNode | null => {
+    if (!n.isDir) return { name: n.name, path: n.path, isDir: false };
+    const kids: FileNode[] = [];
+    for (const v of n._kids?.values() ?? []) {
+      const s = serialize(v);
+      if (s) kids.push(s);
+    }
+    if (kids.length === 0) return null;
+    kids.sort((a, b) => (a.isDir === b.isDir ? a.name.localeCompare(b.name) : a.isDir ? -1 : 1));
+    return { name: n.name, path: n.path, isDir: true, children: kids };
+  };
+  const out: FileNode[] = [];
+  for (const v of rootNode._kids?.values() ?? []) {
+    const s = serialize(v);
+    if (s) out.push(s);
+  }
+  out.sort((a, b) => (a.isDir === b.isDir ? a.name.localeCompare(b.name) : a.isDir ? -1 : 1));
+  return out;
+}
+
 /** Remote file tree: usa `find` sul host con max depth + esclusioni standard.
  *  Output one-path-per-line, lo trasformiamo nella stessa struttura nidificata
  *  del tree locale. */
@@ -1638,6 +1742,17 @@ type PluginInstall = {
     lspServers: number;
   };
   description?: string;
+  activeForProject: boolean;
+};
+
+type SkillEntry = {
+  id: string;
+  name: string;
+  pluginId: string;
+  description?: string;
+  scope: 'user' | 'project' | 'plugin';
+  skillPath: string;
+  activeForProject: boolean;
 };
 
 type Marketplace = {
@@ -1654,6 +1769,7 @@ type McpServer = {
   env?: Record<string, string>;
   url?: string; // per remote MCP
   scope: 'user' | 'project';
+  activeForProject: boolean;
 };
 
 type HookEntry = {
@@ -1662,6 +1778,7 @@ type HookEntry = {
   command: string;
   type?: string;
   scope: 'user' | 'project';
+  activeForProject: boolean;
 };
 
 /** "Pacchetto estensione" non registrato come plugin Claude ma agganciato
@@ -1672,6 +1789,7 @@ type ExtensionPackage = {
   packageRoot: string;     // path comune in node_modules
   hooks: Array<{ event: string; matcher?: string; scope: 'user' | 'project' }>;
   scope: 'user' | 'project' | 'mixed';
+  activeForProject: boolean;
 };
 
 type PluginsState = {
@@ -1680,6 +1798,7 @@ type PluginsState = {
   marketplaces: Marketplace[];
   mcpServers: McpServer[];
   hooks: HookEntry[];
+  skills: SkillEntry[];
   /** globalmente abilitati per il progetto (dal merge user+project settings) */
   enabledMap: Record<string, boolean>;
   paths: {
@@ -1711,6 +1830,56 @@ function countList(v: unknown): number {
   if (v && typeof v === 'object') return Object.keys(v as object).length;
   if (typeof v === 'string') return 1;
   return 0;
+}
+
+/** Estrae name/description dalla frontmatter YAML di un SKILL.md.
+ *  Parser inline minimale: cerca solo le chiavi root `name:` e `description:`
+ *  fino al delimitatore `---` di chiusura. Sufficiente per il formato Anthropic
+ *  standard (no nested keys, no multiline scalars). */
+function parseSkillFrontmatter(raw: string): { name?: string; description?: string } {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(raw);
+  if (!m) return {};
+  const out: { name?: string; description?: string } = {};
+  for (const line of m[1].split(/\r?\n/)) {
+    const kv = /^(name|description)\s*:\s*(.+?)\s*$/.exec(line);
+    if (!kv) continue;
+    let val = kv[2];
+    // strip surrounding quotes
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    (out as any)[kv[1]] = val;
+  }
+  return out;
+}
+
+async function scanSkillDir(
+  dir: string,
+  scope: 'user' | 'project' | 'plugin',
+  pluginId: string,
+): Promise<SkillEntry[]> {
+  let entries: any[] = [];
+  try { entries = await readdir(dir, { withFileTypes: true }); } catch { return []; }
+  const out: SkillEntry[] = [];
+  for (const e of entries) {
+    if (!e.isDirectory?.()) continue;
+    const skillPath = path.join(dir, e.name, 'SKILL.md');
+    let raw: string;
+    try { raw = await readFile(skillPath, 'utf8'); } catch { continue; }
+    const fm = parseSkillFrontmatter(raw);
+    const name = fm.name || e.name;
+    const id = pluginId === '(builtin)' ? `${scope}:${name}` : `${pluginId}:${name}`;
+    out.push({
+      id,
+      name,
+      pluginId,
+      description: fm.description,
+      scope,
+      skillPath,
+      activeForProject: false, // riempito dal chiamante
+    });
+  }
+  return out;
 }
 
 async function readPluginsState(project: Project): Promise<PluginsState> {
@@ -1751,12 +1920,15 @@ async function readPluginsState(project: Project): Promise<PluginsState> {
     ...(projectSettings?.enabledPlugins ?? {}),
   };
 
+  const skills: SkillEntry[] = [];
+
   if (installed?.plugins) {
     for (const [pluginId, installs] of Object.entries(installed.plugins)) {
       for (const inst of installs) {
         const [name, marketplace] = pluginId.split('@', 2);
         const manifestPath = path.join(inst.installPath, '.claude-plugin', 'plugin.json');
         const manifest = await readJsonSafe<any>(manifestPath);
+        const enabled = enabledMap[pluginId] === true;
         plugins.push({
           id: pluginId,
           name: name || pluginId,
@@ -1767,7 +1939,7 @@ async function readPluginsState(project: Project): Promise<PluginsState> {
           installedAt: inst.installedAt,
           lastUpdated: inst.lastUpdated,
           gitCommitSha: inst.gitCommitSha,
-          enabled: enabledMap[pluginId] === true,
+          enabled,
           manifest,
           description: typeof manifest?.description === 'string' ? manifest.description : undefined,
           exposes: {
@@ -1778,10 +1950,34 @@ async function readPluginsState(project: Project): Promise<PluginsState> {
             mcpServers: manifest?.mcpServers ? Object.keys(manifest.mcpServers).length : 0,
             lspServers: manifest?.lspServers ? Object.keys(manifest.lspServers).length : 0,
           },
+          activeForProject: enabled,
         });
+        // Skills dichiarate dentro al plugin: due percorsi standard
+        const fromPlugin: SkillEntry[] = [
+          ...await scanSkillDir(path.join(inst.installPath, 'skills'), 'plugin', pluginId),
+          ...await scanSkillDir(path.join(inst.installPath, '.claude-plugin', 'skills'), 'plugin', pluginId),
+        ];
+        for (const s of fromPlugin) {
+          s.activeForProject = enabled;
+          skills.push(s);
+        }
       }
     }
   }
+
+  // Skills user-globali e progetto: sempre attive nel contesto del progetto
+  for (const s of await scanSkillDir(path.join(claudeHome, 'skills'), 'user', '(builtin)')) {
+    s.activeForProject = true;
+    skills.push(s);
+  }
+  for (const s of await scanSkillDir(path.join(project.path, '.claude', 'skills'), 'project', '(builtin)')) {
+    s.activeForProject = true;
+    skills.push(s);
+  }
+  skills.sort((a, b) => {
+    if (a.activeForProject !== b.activeForProject) return a.activeForProject ? -1 : 1;
+    return a.id.localeCompare(b.id);
+  });
   // Sort: enabled first, then by name
   plugins.sort((a, b) => {
     if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
@@ -1804,12 +2000,14 @@ async function readPluginsState(project: Project): Promise<PluginsState> {
     mcpServers.push({
       name, scope: 'user',
       command: cfg?.command, args: cfg?.args, env: cfg?.env, url: cfg?.url,
+      activeForProject: true,
     });
   }
   for (const [name, cfg] of Object.entries((projectMcp?.mcpServers ?? {}) as Record<string, any>)) {
     mcpServers.push({
       name, scope: 'project',
       command: cfg?.command, args: cfg?.args, env: cfg?.env, url: cfg?.url,
+      activeForProject: true,
     });
   }
 
@@ -1832,6 +2030,7 @@ async function readPluginsState(project: Project): Promise<PluginsState> {
                 command: hk.command,
                 type: hk.type,
                 scope: src,
+                activeForProject: true,
               });
             }
           }
@@ -1875,6 +2074,7 @@ async function readPluginsState(project: Project): Promise<PluginsState> {
         packageRoot: pkgRoot ?? '',
         hooks: [],
         scope: h.scope,
+        activeForProject: true,
       });
     }
     const ep = pkgMap.get(key)!;
@@ -1890,6 +2090,7 @@ async function readPluginsState(project: Project): Promise<PluginsState> {
     marketplaces,
     mcpServers,
     hooks,
+    skills,
     enabledMap,
     paths: {
       claudeHome,
@@ -2166,20 +2367,32 @@ const server = Bun.serve<WsData, {}>({
         args = ['-e', 'POSIX path of (choose folder with prompt "Choose the project folder")'];
       } else if (process.platform === 'win32') {
         // PowerShell FolderBrowserDialog. STA mode is required for WinForms.
-        // A topmost dummy form is parented to the dialog so it doesn't get
-        // hidden behind the main app window.
+        // Il `$top` form viene effettivamente mostrato (Show + BringToFront)
+        // così il FolderBrowserDialog ottiene un parent foreground reale e
+        // non rimane nascosto dietro la WebView. Senza Show() il form non
+        // ha window handle realizzato e TopMost non ha effetto pratico.
         const ps = [
           "Add-Type -AssemblyName System.Windows.Forms;",
+          "$top = New-Object System.Windows.Forms.Form;",
+          "$top.TopMost = $true;",
+          "$top.ShowInTaskbar = $false;",
+          "$top.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None;",
+          "$top.Size = New-Object System.Drawing.Size(1,1);",
+          "$top.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual;",
+          "$top.Location = New-Object System.Drawing.Point(-2000,-2000);",
+          "$top.Show();",
+          "$top.BringToFront();",
           "$f = New-Object System.Windows.Forms.FolderBrowserDialog;",
           "$f.Description = 'Choose the project folder';",
           "$f.ShowNewFolderButton = $true;",
-          "$top = New-Object System.Windows.Forms.Form;",
-          "$top.TopMost = $true;",
           "$r = $f.ShowDialog($top);",
+          "$top.Close();",
           "$top.Dispose();",
           "if ($r -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.SelectedPath }",
         ].join(' ');
-        cmd = 'powershell.exe';
+        // Path assoluto come fallback se PATH è corrotto/insolito in qualche
+        // scenario di bundling. Spawn con path assoluto skippa la PATH lookup.
+        cmd = WIN_POWERSHELL_BIN;
         args = ['-NoProfile', '-STA', '-Command', ps];
       } else {
         // Linux / others: try zenity (GNOME) — falls through to error if missing.
@@ -2588,6 +2801,179 @@ const server = Bun.serve<WsData, {}>({
       }
       const tree = await listTree('.', 4);
       return Response.json({ root: project.path, tree });
+    }
+
+    /** OpenSpec detection: vero solo se esiste una directory `openspec/` nella
+     *  root del progetto attivo. Usato dal frontend per mostrare/nascondere
+     *  l'icona OpenSpec sul rail sinistro. */
+    if (url.pathname === '/api/openspec/status' && req.method === 'GET') {
+      const project = activeProject(settings);
+      if (project.remote) {
+        const r = await sshExec(project.remote, `test -d ${shellQuote(`${project.path.replace(/\/+$/, '')}/openspec`)} && echo YES || echo NO`);
+        const enabled = r.stdout.trim() === 'YES';
+        return Response.json({ enabled });
+      }
+      try {
+        const s = await stat(path.join(project.path, 'openspec'));
+        return Response.json({ enabled: s.isDirectory() });
+      } catch {
+        return Response.json({ enabled: false });
+      }
+    }
+
+    /** OpenSpec tree: ramo della cartella `openspec/` filtrato a `.md/.yaml/.yml`.
+     *  Path nei nodi sono relativi alla root di progetto (es.
+     *  `openspec/changes/foo/proposal.md`) così il client può riusare
+     *  GET/PUT `/api/file` senza traduzioni. */
+    if (url.pathname === '/api/openspec/tree' && req.method === 'GET') {
+      const project = activeProject(settings);
+      if (project.remote) {
+        const tree = await listRemoteOpenspecTree(project.remote, project.path);
+        return Response.json({ root: 'openspec', tree });
+      }
+      const tree = await listTreeFiltered('openspec', OPENSPEC_EXT, 8);
+      return Response.json({ root: 'openspec', tree });
+    }
+
+    /** OpenSpec state: file JSON `openspec/.sublodex-state.json` con la mappa
+     *  degli `applied` (chiave = changeDir relativo, valore = ISO timestamp).
+     *  Apply non sposta cartelle, quindi senza questo file non sapremmo
+     *  distinguere "proposta non ancora applicata" da "applicata in attesa di
+     *  archive". Persistito server-side così sopravvive a F5 / cambio macchina. */
+    if (url.pathname === '/api/openspec/state' && req.method === 'GET') {
+      const project = activeProject(settings);
+      const rel = 'openspec/.sublodex-state.json';
+      if (project.remote) {
+        const abs = joinRemote(project.path, rel);
+        const r = await sshExec(project.remote, `cat -- ${shellQuote(abs)} 2>/dev/null || echo {}`);
+        try {
+          const parsed = JSON.parse(r.stdout || '{}') as { applied?: Record<string, string> };
+          return Response.json({ applied: parsed.applied ?? {} });
+        } catch {
+          return Response.json({ applied: {} });
+        }
+      }
+      try {
+        const raw = await readFile(path.join(project.path, rel), 'utf8');
+        const parsed = JSON.parse(raw) as { applied?: Record<string, string> };
+        return Response.json({ applied: parsed.applied ?? {} });
+      } catch {
+        return Response.json({ applied: {} });
+      }
+    }
+
+    if (url.pathname === '/api/openspec/state/applied' && req.method === 'POST') {
+      const project = activeProject(settings);
+      const body = (await req.json().catch(() => ({}))) as {
+        changeDir?: string;
+        applied?: boolean;
+      };
+      const changeDir = body.changeDir;
+      const applied = body.applied;
+      if (!changeDir || typeof applied !== 'boolean') {
+        return Response.json({ error: 'changeDir + applied required' }, { status: 400 });
+      }
+      // Solo cartelle dirette sotto openspec/changes/, esclusa archive/.
+      if (!/^openspec\/changes\/[^/]+$/.test(changeDir)) {
+        return Response.json({ error: 'changeDir must match openspec/changes/<name>' }, { status: 400 });
+      }
+      if (!isSafeRelativePath(changeDir)) {
+        return Response.json({ error: 'invalid changeDir' }, { status: 400 });
+      }
+      const rel = 'openspec/.sublodex-state.json';
+      // Lettura → mutate → write atomic (tmp + rename) per non corrompere il
+      // file se due richieste arrivano in parallelo. Il rename su POSIX è
+      // atomico nello stesso filesystem; su Windows Bun rimpiazza correttamente.
+      if (project.remote) {
+        const abs = joinRemote(project.path, rel);
+        const dir = abs.replace(/\/[^/]*$/, '') || '/';
+        const readR = await sshExec(project.remote, `cat -- ${shellQuote(abs)} 2>/dev/null || echo {}`);
+        let state: { applied: Record<string, string> } = { applied: {} };
+        try {
+          const parsed = JSON.parse(readR.stdout || '{}') as { applied?: Record<string, string> };
+          state.applied = parsed.applied ?? {};
+        } catch { /* corrupt → reset */ }
+        if (applied) state.applied[changeDir] = new Date().toISOString();
+        else delete state.applied[changeDir];
+        const next = JSON.stringify(state, null, 2);
+        const writeR = await sshExec(
+          project.remote,
+          `mkdir -p ${shellQuote(dir)} && cat > ${shellQuote(abs)} && echo OK_WRITE`,
+          next,
+        );
+        const ok = writeR.stdout.includes('OK_WRITE') && !isSshFatalError(writeR.stderr);
+        return Response.json(ok ? { ok: true, applied: state.applied } : { error: writeR.stderr || 'remote write failed' }, {
+          status: ok ? 200 : 500,
+        });
+      }
+      const abs = path.join(project.path, rel);
+      let state: { applied: Record<string, string> } = { applied: {} };
+      try {
+        const raw = await readFile(abs, 'utf8');
+        const parsed = JSON.parse(raw) as { applied?: Record<string, string> };
+        state.applied = parsed.applied ?? {};
+      } catch { /* file mancante o corrotto → ricreiamo */ }
+      if (applied) state.applied[changeDir] = new Date().toISOString();
+      else delete state.applied[changeDir];
+      await mkdir(path.dirname(abs), { recursive: true });
+      const tmp = `${abs}.tmp`;
+      await writeFile(tmp, JSON.stringify(state, null, 2), 'utf8');
+      await rename(tmp, abs);
+      return Response.json({ ok: true, applied: state.applied });
+    }
+
+    /** OpenSpec changes list: esegue `openspec list --json` nella project root.
+     *  Output schema (vedi opsx/archive.md): { changes: [{ name, completedTasks,
+     *  totalTasks, lastModified, status: "complete" | "in-progress" | ... }] }.
+     *  Usato dalla ArchivePickerModal per popolare il multi-select. Se il CLI
+     *  non è installato o fallisce, ritorna 200 con `{ changes: [], error }` così
+     *  il client può degradare con messaggio (invece di 500). */
+    if (url.pathname === '/api/openspec/changes' && req.method === 'GET') {
+      const project = activeProject(settings);
+      if (project.remote) {
+        const r = await sshExec(
+          project.remote,
+          `cd ${shellQuote(project.path)} && openspec list --json`,
+        );
+        if (isSshFatalError(r.stderr)) {
+          return Response.json({ changes: [], error: r.stderr.trim() }, { status: 200 });
+        }
+        try {
+          const parsed = JSON.parse(r.stdout || '{}') as { changes?: unknown };
+          return Response.json({ changes: Array.isArray(parsed.changes) ? parsed.changes : [] });
+        } catch (err) {
+          return Response.json({
+            changes: [],
+            error: `parse error: ${err instanceof Error ? err.message : String(err)}`,
+          });
+        }
+      }
+      try {
+        const proc = Bun.spawn(['openspec', 'list', '--json'], {
+          cwd: project.path,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        const [stdout, stderr] = await Promise.all([
+          new Response(proc.stdout).text(),
+          new Response(proc.stderr).text(),
+        ]);
+        const code = await proc.exited;
+        if (code !== 0) {
+          return Response.json({
+            changes: [],
+            error: stderr.trim() || `openspec exited with code ${code}`,
+          });
+        }
+        const parsed = JSON.parse(stdout || '{}') as { changes?: unknown };
+        return Response.json({ changes: Array.isArray(parsed.changes) ? parsed.changes : [] });
+      } catch (err) {
+        // ENOENT (CLI non installato) cade qui: il client mostra "openspec CLI
+        // non disponibile" senza esplodere.
+        return Response.json({
+          changes: [],
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     if (url.pathname === '/api/git/status' && req.method === 'GET') {

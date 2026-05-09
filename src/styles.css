@@ -833,6 +833,12 @@ select.cmd-palette__arginput   { appearance: none; cursor: pointer; }
   font-family: var(--font-mono);
   margin-left: 12px;
 }
+.ext__split {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+}
 .ext__tabs {
   display: flex;
   gap: 0;
@@ -840,6 +846,15 @@ select.cmd-palette__arginput   { appearance: none; cursor: pointer; }
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   background: var(--bg);
+}
+.ext__tabs--vertical {
+  flex-direction: column;
+  padding: 10px 0;
+  border-bottom: none;
+  border-right: 1px solid var(--border);
+  width: 180px;
+  flex-shrink: 0;
+  overflow-y: auto;
 }
 .ext__tab {
   background: transparent;
@@ -855,10 +870,48 @@ select.cmd-palette__arginput   { appearance: none; cursor: pointer; }
   font-weight: 500;
   margin-bottom: -1px;
 }
+.ext__tabs--vertical .ext__tab {
+  border-bottom: none;
+  border-left: 2px solid transparent;
+  margin-bottom: 0;
+  padding: 8px 16px;
+  text-align: left;
+  white-space: nowrap;
+  justify-content: space-between;
+}
+.ext__tab-label {
+  flex: 1;
+}
 .ext__tab:hover { color: var(--fg); }
 .ext__tab--active {
   color: var(--accent);
   border-bottom-color: var(--accent);
+}
+.ext__tabs--vertical .ext__tab--active {
+  border-bottom-color: transparent;
+  border-left-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.ext__tabs--vertical .ext__tab--action {
+  margin-top: auto;
+  border-top: 1px solid var(--border);
+  color: var(--fg-mute);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+.ext__tabs--vertical .ext__tab--action:hover:not(:disabled) {
+  color: var(--accent);
+  background: var(--bg-card);
+}
+.ext__tabs--vertical .ext__tab--action:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.ext__tabs--vertical .ext__tab--action .ext__tab-count {
+  background: transparent;
+  font-size: 14px;
+  min-width: 0;
+  padding: 0;
 }
 .ext__tab-count {
   background: var(--bg-card-2);
@@ -879,6 +932,7 @@ select.cmd-palette__arginput   { appearance: none; cursor: pointer; }
   overflow-y: auto;
   padding: 14px 18px;
   background: var(--bg-deep);
+  min-width: 0;
 }
 .ext__loading, .ext__error {
   padding: 30px;
@@ -934,6 +988,23 @@ select.cmd-palette__arginput   { appearance: none; cursor: pointer; }
 .ext-card--enabled .ext-card__icon {
   color: var(--accent);
   text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+/* "active for current project" — bordo verde sull'intera card; sovrascrive
+ * il border-color di default e --enabled. Indica che l'elemento è effettivamente
+ * caricato dal CLI Claude per questo progetto. */
+.ext-card--project-active {
+  border-color: color-mix(in srgb, var(--green) 50%, var(--border));
+}
+.ext-card--project-active:hover {
+  border-color: var(--green);
+}
+.ext-card--project-active .ext-card__icon {
+  color: var(--green);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--green) 60%, transparent);
+}
+.ext-mcp--project-active,
+.ext-hook--project-active {
+  border-left: 3px solid var(--green);
 }
 .ext-card__head {
   display: flex;
@@ -4919,3 +4990,576 @@ input[type=number].field__input::-webkit-inner-spin-button {
 ::-webkit-scrollbar-track        { background: transparent; }
 ::-webkit-scrollbar-thumb        { background: var(--border); border-radius: 5px; }
 ::-webkit-scrollbar-thumb:hover  { background: var(--border-strong); }
+
+/* ---------- OpenSpec editor (porta da Specificator, ritematizzato) ---------- */
+
+/* sidebar mode tabs (sessions / openspec) — appaiono solo se hasOpenspec */
+.sidebar__modetabs {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.sidebar__modetab {
+  background: transparent;
+  border: none;
+  color: var(--fg-mute);
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.sidebar__modetab:hover { color: var(--fg-dim); background: var(--bg-card); }
+.sidebar__modetab--active {
+  color: var(--accent);
+  background: var(--bg-card-2);
+}
+
+/* rail: nuova icona openspec — riusa stile rail__item esistente */
+.rail__item--openspec { /* niente di speciale, ereditato da .rail__item */ }
+
+/* icone canoniche OpenSpec nel tree (proposal/design/tasks) */
+.fnode__spec-icon--proposal { color: var(--yellow); }
+.fnode__spec-icon--design   { color: var(--blue); }
+.fnode__spec-icon--tasks    { color: var(--green); }
+
+/* bottone "regen" accanto a design.md / tasks.md nel tree.
+ * Mirror del pattern .fnode__trash: opacity 0 a riposo, full su hover row.
+ * A differenza del trash, viene mostrato sempre se attivo (claudeBusy → disabled
+ * con opacity ridotta) per dare un hint visivo dell'azione disponibile. */
+.fnode-row:hover .fnode__regen { opacity: 1; }
+.fnode__regen {
+  opacity: 0.55;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--accent);
+  cursor: pointer;
+  margin-right: 6px;
+  transition: opacity 0.12s, background 0.12s, color 0.12s, border-color 0.12s;
+}
+.fnode__regen:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+  opacity: 1;
+}
+.fnode__regen:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+/* Bottoni opsx: Apply (check verde) e Archive (box) sulle cartelle change.
+ * Stesso pattern di .fnode__regen ma con accenti diversi per distinguerli a
+ * colpo d'occhio. Apply usa --green, Archive usa --fg-mute (azione opzionale,
+ * quindi visivamente meno gridata). */
+.fnode-row:hover .fnode__opsx { opacity: 1; }
+.fnode__opsx {
+  opacity: 0.55;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-right: 6px;
+  transition: opacity 0.12s, background 0.12s, color 0.12s, border-color 0.12s;
+}
+.fnode__opsx--apply {
+  color: var(--green, #22c55e);
+}
+.fnode__opsx--apply:hover:not(:disabled) {
+  background: var(--green, #22c55e);
+  color: var(--bg);
+  border-color: var(--green, #22c55e);
+  opacity: 1;
+}
+.fnode__opsx--archive {
+  color: var(--accent);
+}
+.fnode__opsx--archive:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+  opacity: 1;
+}
+.fnode__opsx:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+/* badge "archived" sulle cartelle sotto openspec/changes/archive/. */
+.fnode__badge {
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  background: var(--bg-elev);
+  color: var(--fg-mute);
+  border: 1px solid var(--border);
+}
+.fnode__badge--archived {
+  background: var(--bg-elev);
+  color: var(--fg-mute);
+}
+
+/* Modale propose: stesso shell delle altre, body più alto per la textarea. */
+.modal--propose { width: min(560px, 92vw); height: auto; max-height: 78vh; }
+.modal--confirm { width: min(440px, 90vw); height: auto; max-height: 60vh; }
+.modal--archive-picker { width: min(640px, 92vw); height: auto; max-height: 80vh; }
+
+/* Lista cliccabile dentro ArchivePickerModal. Ogni riga è un button (a11y).
+ * .--selected pinta lo sfondo accento, il check sulla sinistra mostra la spunta. */
+.archive-picker__list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 50vh;
+  overflow-y: auto;
+  padding: 2px;
+  margin: -2px;
+}
+.archive-picker__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+  font-size: 12.5px;
+  transition: background 0.1s, border-color 0.1s;
+}
+.archive-picker__item:hover {
+  background: var(--bg-elev);
+  border-color: var(--border-strong);
+}
+.archive-picker__item--selected {
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg));
+  border-color: var(--accent);
+}
+.archive-picker__check {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 3px;
+  background: var(--bg);
+  flex-shrink: 0;
+  color: var(--bg);
+}
+.archive-picker__check--on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+.archive-picker__name {
+  flex: 1;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.archive-picker__status {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+.archive-picker__status--complete {
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 35%, transparent);
+  background: color-mix(in srgb, var(--green) 12%, transparent);
+}
+.archive-picker__status--in-progress {
+  color: var(--fg-mute);
+}
+.archive-picker__progress {
+  font-size: 11px;
+  color: var(--fg-mute);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Banner di avanzamento batch in cima al tree mentre sta archiviando in serie. */
+.archive-picker__banner {
+  margin: 6px 8px;
+  padding: 6px 10px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  color: var(--fg);
+}
+.archive-picker__banner--paused {
+  /* Stato "in attesa di risposta utente": yellow/warning per attirare l'occhio. */
+  background: color-mix(in srgb, var(--yellow, #e6db74) 14%, transparent);
+  border-color: color-mix(in srgb, var(--yellow, #e6db74) 45%, transparent);
+}
+.archive-picker__queue { color: var(--fg-mute); }
+
+/* Checkbox "auto-sync" nella picker modale: layout side-by-side col label
+ * descrittivo. La hint è in due righe: titolo + spiegazione. */
+.archive-picker__autosync {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  cursor: pointer;
+  user-select: none;
+}
+.archive-picker__autosync:hover {
+  border-color: var(--border-strong);
+}
+.archive-picker__autosync input[type="checkbox"] {
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+.archive-picker__autosync-label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.archive-picker__autosync-hint {
+  font-size: 11px;
+  color: var(--fg-mute);
+}
+
+/* Badge "applied" silenzioso sulle change già applicate. Differisce da
+ * --archived (più mute) e indica che la change è candidata all'archive. */
+.fnode__badge--applied {
+  background: color-mix(in srgb, var(--green) 14%, transparent);
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 35%, transparent);
+}
+.modal--propose .field__textarea {
+  min-height: 140px;
+  resize: vertical;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12.5px;
+  line-height: 1.45;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+}
+.modal--propose .field__input {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 13px;
+}
+.modal--propose .field__label,
+.modal--confirm .field__label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* spec editor: bottone reload + conferma inline */
+.spec-editor__reload {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.spec-editor__reload:hover {
+  background: var(--accent);
+  color: var(--bg);
+}
+.spec-editor__reload-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--fg-dim);
+}
+.spec-editor__reload-confirm > span {
+  color: var(--yellow);
+  font-weight: 500;
+}
+
+/* center pane: tab strip sopra conversation/spec editor */
+.center__tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 8px 0 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+.center__pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.center__pane--spec { background: var(--bg); }
+
+/* spec editor */
+.spec-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  min-height: 0;
+}
+.spec-editor__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+.spec-editor__name {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--fg);
+  font-weight: 600;
+}
+.spec-editor__path {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-mute);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 50%;
+}
+.spec-editor__dirty {
+  font-size: 10.5px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--yellow);
+  background: var(--yellow-dim);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+.spec-editor__saving { font-size: 11px; color: var(--green); }
+.spec-editor__error  { font-size: 11px; color: var(--red); }
+.spec-editor__spacer { flex: 1; }
+.spec-editor__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px 36px;
+}
+.spec-editor__loading {
+  color: var(--fg-mute);
+  font-size: 13px;
+  padding: 16px;
+}
+
+/* milkdown overrides per spec editor (typography "documento") */
+.spec-editor .milkdown,
+.spec-editor .milkdown .editor,
+.spec-editor .ProseMirror.editor {
+  background: transparent;
+  padding: 0;
+}
+.spec-editor .ProseMirror {
+  outline: none;
+  min-height: 320px;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--fg);
+  background: transparent;
+}
+.spec-editor .ProseMirror > * + * { margin-top: 0.75em; }
+.spec-editor .ProseMirror h1 {
+  font-size: 1.85em;
+  font-weight: 700;
+  color: var(--fg);
+  margin-top: 1.2em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--border);
+}
+.spec-editor .ProseMirror h2 {
+  font-size: 1.4em;
+  font-weight: 600;
+  color: var(--fg);
+  margin-top: 1em;
+}
+.spec-editor .ProseMirror h3 {
+  font-size: 1.15em;
+  font-weight: 600;
+  color: var(--fg);
+  margin-top: 0.8em;
+}
+.spec-editor .ProseMirror p { margin: 0; }
+.spec-editor .ProseMirror strong { font-weight: 700; color: var(--fg); }
+.spec-editor .ProseMirror em { font-style: italic; }
+.spec-editor .ProseMirror code {
+  background: var(--bg-card);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  color: var(--accent);
+}
+.spec-editor .ProseMirror pre {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  overflow-x: auto;
+}
+.spec-editor .ProseMirror pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  color: var(--fg);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.spec-editor .ProseMirror ul,
+.spec-editor .ProseMirror ol { padding-left: 24px; }
+.spec-editor .ProseMirror li { margin: 2px 0; }
+.spec-editor .ProseMirror li > p { margin: 0; }
+.spec-editor .ProseMirror blockquote {
+  border-left: 3px solid var(--accent);
+  padding-left: 14px;
+  color: var(--fg-dim);
+}
+.spec-editor .ProseMirror hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.5em 0;
+}
+.spec-editor .ProseMirror a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.spec-editor .ProseMirror a:hover { text-decoration: underline; }
+.spec-editor .ProseMirror table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.spec-editor .ProseMirror th,
+.spec-editor .ProseMirror td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: left;
+}
+.spec-editor .ProseMirror th {
+  background: var(--bg-card);
+  font-weight: 600;
+}
+
+/* markdown context menu (right-click in spec editor) */
+.md-ctx-menu {
+  position: fixed;
+  z-index: 9999;
+  min-width: 220px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  font-size: 13px;
+  font-family: var(--font-sans);
+  user-select: none;
+  color: var(--fg);
+}
+.md-ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  background: none;
+  color: var(--fg);
+  cursor: pointer;
+  border-radius: 5px;
+  text-align: left;
+  font-size: 13px;
+  font-family: var(--font-sans);
+  white-space: nowrap;
+}
+.md-ctx-item:hover,
+.md-ctx-sub-trigger:hover,
+.md-ctx-sub-trigger.open {
+  background: var(--bg-card-2);
+  color: var(--accent);
+}
+.md-ctx-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 3px 8px;
+}
+.md-ctx-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 4px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.md-ctx-tag.mono { letter-spacing: -0.5px; }
+.md-ctx-icon {
+  min-width: 28px;
+  text-align: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.md-ctx-sub-trigger {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 5px;
+  cursor: default;
+}
+.md-ctx-arrow {
+  margin-left: auto;
+  font-size: 9px;
+  opacity: 0.5;
+}
+.md-ctx-submenu {
+  position: absolute;
+  left: calc(100% + 4px);
+  top: -4px;
+  min-width: 200px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}

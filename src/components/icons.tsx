@@ -156,3 +156,182 @@ export function EyeOffIcon({ size = 14, className }: IconProps) {
     </svg>
   );
 }
+
+/** Icona "+": usata per il bottone "new proposal" accanto al refresh nel tree. */
+export function PlusIcon({ size = 14, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+    >
+      <path d="M8 3.5v9" />
+      <path d="M3.5 8h9" />
+    </svg>
+  );
+}
+
+/** Icona "check" per il bottone Apply. */
+export function CheckIcon({ size = 14, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+    >
+      <path d="M3 8.5l3 3 7-7" />
+    </svg>
+  );
+}
+
+/** Icona "archive box" per il bottone Archive. */
+export function ArchiveIcon({ size = 14, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+    >
+      <rect x="2" y="3" width="12" height="3" rx="0.5" />
+      <path d="M3 6v6.5A1 1 0 0 0 4 13.5h8a1 1 0 0 0 1-1V6" />
+      <path d="M6.5 8.5h3" />
+    </svg>
+  );
+}
+
+/** Icona "regen": ciclo + sparkle. Usata per il bottone "rigenera con Claude"
+ *  accanto ai file design/tasks nel tree OpenSpec. */
+export function RegenIcon({ size = 14, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+    >
+      <path d="M13 3.5v3h-3" />
+      <path d="M13 6.5A5.5 5.5 0 1 0 13.5 10" />
+      <path d="M3 13.5l1-1m0 0l1 1m-1-1v-1.5" />
+    </svg>
+  );
+}
+
+/** Icona "proposal": lampadina — il file `proposal.md` di un change OpenSpec. */
+export function ProposalIcon({ size = 14, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+    >
+      <path d="M5.5 10.5c-1.2-.9-2-2.3-2-3.9A4.5 4.5 0 0 1 12.5 6.6c0 1.6-.8 3-2 3.9v1.5a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-1.5Z" />
+      <path d="M6.5 14h3" />
+      <path d="M8 4v3" />
+    </svg>
+  );
+}
+
+/** Icona "design": compasso/squadra — il file `design.md` di un change OpenSpec. */
+export function DesignIcon({ size = 14, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+    >
+      <path d="M8 2v8" />
+      <path d="M8 2 4 13.5" />
+      <path d="M8 2l4 11.5" />
+      <circle cx="8" cy="10.5" r="1.5" />
+    </svg>
+  );
+}
+
+/** Icona "tasks": checklist — il file `tasks.md` di un change OpenSpec. */
+export function TasksIcon({ size = 14, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+    >
+      <path d="M3 3.5h2v2H3z" />
+      <path d="M3 7.5h2v2H3z" />
+      <path d="M3 11.5h2v2H3z" />
+      <path d="M7 4.5h6" />
+      <path d="M7 8.5h6" />
+      <path d="M7 12.5h6" />
+    </svg>
+  );
+}
+
+/** Icona "spec": un libro aperto stilizzato. Usata dal rail sinistro e dalla
+ *  testata della sidebar quando la modalità OpenSpec è disponibile. */
+export function SpecIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+    >
+      <path d="M2 3.25A1.25 1.25 0 0 1 3.25 2H7v11H3.25A1.25 1.25 0 0 1 2 11.75V3.25Z" />
+      <path d="M14 3.25A1.25 1.25 0 0 0 12.75 2H9v11h3.75A1.25 1.25 0 0 0 14 11.75V3.25Z" />
+      <path d="M4 5h2M4 7.5h2M10 5h2M10 7.5h2" />
+    </svg>
+  );
+}
