@@ -125,13 +125,17 @@ export function isResultEvent(e: StreamEvent): e is ResultEvent {
   return e.type === 'result';
 }
 
+export type PermissionDecision = 'allow' | 'allow_always' | 'deny';
+
 export type ServerMessage =
   | { type: 'event'; event: StreamEvent }
+  | { type: 'permission_request'; id: string; toolName: string; input: unknown }
   | { type: 'done' }
   | { type: 'error'; error: string };
 
 export type ClientMessage =
   | { type: 'send'; prompt: string; sessionId?: string; model?: string; permissionMode?: string; attachments?: Attachment[] }
+  | { type: 'permission_response'; id: string; decision: PermissionDecision; payload?: string }
   | { type: 'cancel' };
 
 /* ---- modello UI ---- */

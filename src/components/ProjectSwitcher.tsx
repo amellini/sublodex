@@ -119,7 +119,7 @@ export function ProjectSwitcher() {
         <input
           ref={inputRef}
           className="quick-open__input"
-          placeholder="switch project…  (esc to close)"
+          placeholder="Switch project…  (esc to close)"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onKey}
@@ -128,7 +128,7 @@ export function ProjectSwitcher() {
         />
         <div className="quick-open__list" ref={listRef}>
           {matches.length === 0 && (
-            <div className="quick-open__empty">no projects match</div>
+            <div className="quick-open__empty">No projects match</div>
           )}
           {matches.map((p, i) => {
             const isActive = p.id === activeId;
@@ -143,13 +143,13 @@ export function ProjectSwitcher() {
               >
                 <span className="quick-open__name">
                   {p.name}
-                  {isActive && <span className="header__project-ssh" style={{ marginLeft: 6 }}>active</span>}
+                  {isActive && <span className="header__project-ssh" style={{ marginLeft: 6 }}>Active</span>}
                   {p.remote && <span className="header__project-ssh" style={{ marginLeft: 6 }}>ssh</span>}
                 </span>
                 <span className="quick-open__path">{p.path}</span>
                 {isConfirming && (
                   <span className="quick-open__path" style={{ color: 'var(--color-warning, #c97a00)' }}>
-                    ↵ again to interrupt the running stream
+                    ↵ Again to interrupt the running stream
                   </span>
                 )}
               </button>
@@ -158,10 +158,10 @@ export function ProjectSwitcher() {
         </div>
         <div className="quick-open__hint">
           {confirmSwitchId
-            ? '↵ switch anyway (cancels stream) · esc keep streaming'
+            ? '↵ Switch anyway (cancels stream) · esc keep streaming'
             : isStreaming
-              ? '↑↓ navigate · ↵ switch (will prompt: stream is active) · esc close'
-              : '↑↓ navigate · ↵ switch · esc close'}
+              ? '↑↓ Navigate · ↵ Switch (will prompt: stream is active) · esc close'
+              : '↑↓ Navigate · ↵ Switch · esc close'}
         </div>
       </div>
     </div>

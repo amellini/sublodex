@@ -385,18 +385,18 @@ export function GitPanel() {
       const r = await fetch('/api/git/generate-commit-msg', { method: 'POST' });
       const text = await r.text();
       if (!text.trim()) {
-        setOpError(`empty response from server (status ${r.status}) — request may have timed out`);
+        setOpError(`Empty response from server (status ${r.status}) — request may have timed out`);
         return;
       }
       let j: { message?: string; error?: string };
       try {
         j = JSON.parse(text) as { message?: string; error?: string };
       } catch {
-        setOpError(`invalid JSON response: ${text.slice(0, 200)}`);
+        setOpError(`Invalid JSON response: ${text.slice(0, 200)}`);
         return;
       }
       if (!r.ok || j.error) {
-        setOpError(j.error ?? 'failed to generate commit message');
+        setOpError(j.error ?? 'Failed to generate commit message');
         return;
       }
       if (j.message) setCommitMsg(j.message);
@@ -459,7 +459,7 @@ export function GitPanel() {
   const reviewPr = async () => {
     const num = extractPrNumber(prInput);
     if (!num) {
-      setOpError('paste a PR url or number (e.g. https://github.com/.../pull/123 or 123)');
+      setOpError('Paste a PR url or number (e.g. https://github.com/.../pull/123 or 123)');
       return;
     }
     setBusy(true);
@@ -503,7 +503,7 @@ export function GitPanel() {
   const unstagedTree = useMemo(() => buildGitTree(unstagedFiles), [unstagedFiles]);
 
   if (loading && !data) {
-    return <div className="git-panel git-panel--empty">loading…</div>;
+    return <div className="git-panel git-panel--empty">Loading…</div>;
   }
   if (error) {
     return <div className="git-panel git-panel--empty">{error}</div>;
@@ -511,11 +511,11 @@ export function GitPanel() {
   if (!data || !data.isGitRepo) {
     return (
       <div className="git-panel git-panel--empty">
-        <div>not a git repository</div>
+        <div>Not a git repository</div>
         <div className="git-panel__hint">
-          run <code>git init</code> in the project, then refresh
+          Run <code>git init</code> in the project, then refresh
         </div>
-        <button className="header__btn" onClick={refresh}>refresh</button>
+        <button className="header__btn" onClick={refresh}>Refresh</button>
       </div>
     );
   }
@@ -594,13 +594,13 @@ export function GitPanel() {
           <span className="git-panel__branch-name">{data.branch}</span>
           {(data.ahead > 0 || data.behind > 0) && (
             <span className="git-panel__ab">
-              {data.ahead > 0 && <span title="ahead">↑{data.ahead}</span>}
-              {data.behind > 0 && <span title="behind">↓{data.behind}</span>}
+              {data.ahead > 0 && <span title="Ahead">↑{data.ahead}</span>}
+              {data.behind > 0 && <span title="Behind">↓{data.behind}</span>}
             </span>
           )}
           <span className="git-panel__branch-chev">{branchMenuOpen ? '▾' : '▸'}</span>
         </button>
-        <button className="ftree__refresh" onClick={refresh} title="refresh">⟳</button>
+        <button className="ftree__refresh" onClick={refresh} title="Refresh">⟳</button>
       </div>
 
       {branchMenuOpen && (
@@ -622,7 +622,7 @@ export function GitPanel() {
             <div className="git-branch__create">
               <input
                 className="field__input field__input--mono"
-                placeholder="new branch name"
+                placeholder="New branch name"
                 value={newBranchName}
                 onChange={(e) => setNewBranchName(e.target.value)}
                 autoFocus
@@ -636,12 +636,12 @@ export function GitPanel() {
                 onClick={() => newBranchName.trim() && checkout(newBranchName.trim(), true)}
                 disabled={busy || !newBranchName.trim()}
               >
-                create
+                Create
               </button>
             </div>
           ) : (
             <button className="git-branch__new" onClick={() => setCreatingBranch(true)}>
-              + new branch
+              + New branch
             </button>
           )}
         </div>
@@ -654,7 +654,7 @@ export function GitPanel() {
           <textarea
             className="field__textarea git-commit__textarea"
             value={commitMsg}
-            placeholder="commit message"
+            placeholder="Commit message"
             onChange={(e) => setCommitMsg(e.target.value)}
             onKeyDown={(e) => {
               if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
@@ -671,12 +671,12 @@ export function GitPanel() {
             disabled={generating || busy || (data?.isGitRepo && data.files.length === 0)}
             title={
               data?.isGitRepo && data.files.length === 0
-                ? 'no changes to summarize'
+                ? 'No changes to summarize'
                 : stagedFiles.length > 0
-                  ? 'generate commit message from staged changes (AI)'
-                  : 'generate commit message from all changes (AI)'
+                  ? 'Generate commit message from staged changes (AI)'
+                  : 'Generate commit message from all changes (AI)'
             }
-            aria-label="generate commit message"
+            aria-label="Generate commit message"
           >
             {generating
               ? <span className="git-commit__dots"><span>.</span><span>.</span><span>.</span></span>
@@ -684,94 +684,92 @@ export function GitPanel() {
             }
           </button>
         </div>
-        <div className="git-commit__actions">
-          <div className="git-commit-btn">
-            <button
-              className="git-commit-btn__main"
-              onClick={commit}
-              disabled={busy || !commitMsg.trim() || stagedFiles.length === 0}
-              title={
-                stagedFiles.length === 0
-                  ? 'stage files first'
-                  : !commitMsg.trim()
-                    ? 'enter a commit message'
-                    : 'commit staged changes (Ctrl+Enter)'
-              }
-            >
-              commit
-            </button>
-            <div className="git-commit-btn__menu-wrap">
-              <button
-                ref={caretBtnRef}
-                className="git-commit-btn__caret"
-                onClick={() => setCommitMenuOpen((v) => !v)}
-                disabled={busy}
-                title="more actions"
-                aria-label="more commit actions"
-                aria-haspopup="menu"
-                aria-expanded={commitMenuOpen}
-              >
-                {commitMenuOpen ? '▴' : '▾'}
-              </button>
-              {commitMenuOpen && commitMenuPos && createPortal(
-                <div
-                  ref={commitMenuRef}
-                  className="git-commit-btn__menu"
-                  role="menu"
-                  style={{ top: commitMenuPos.top, right: commitMenuPos.right }}
-                >
-                  <button
-                    className="git-commit-btn__opt"
-                    role="menuitem"
-                    onClick={commitAndPush}
-                    disabled={busy || !commitMsg.trim() || data.files.length === 0}
-                    title={
-                      data.files.length === 0
-                        ? 'no changes'
-                        : !commitMsg.trim()
-                          ? 'enter a commit message'
-                          : 'stage all, commit and push'
-                    }
-                  >
-                    <span className="git-commit-btn__opt-label">commit + push</span>
-                    <span className="git-commit-btn__opt-sub">stage all, commit, then git push</span>
-                  </button>
-                  <button
-                    className="git-commit-btn__opt"
-                    role="menuitem"
-                    onClick={stashFromCommit}
-                    disabled={busy || data.files.length === 0}
-                    title={
-                      data.files.length === 0
-                        ? 'nothing to stash'
-                        : 'stash all changes (with optional message)'
-                    }
-                  >
-                    <span className="git-commit-btn__opt-label">stash</span>
-                    <span className="git-commit-btn__opt-sub">git stash push</span>
-                  </button>
-                </div>,
-                document.body,
-              )}
-            </div>
-          </div>
-        </div>
       </div>
 
       <div className="git-panel__actions">
+        <div className="git-commit-btn">
+          <button
+            className="git-commit-btn__main"
+            onClick={commit}
+            disabled={busy || !commitMsg.trim() || stagedFiles.length === 0}
+            title={
+              stagedFiles.length === 0
+                ? 'Stage files first'
+                : !commitMsg.trim()
+                  ? 'Enter a commit message'
+                  : 'Commit staged changes (Ctrl+Enter)'
+            }
+          >
+            Commit
+          </button>
+          <div className="git-commit-btn__menu-wrap">
+            <button
+              ref={caretBtnRef}
+              className="git-commit-btn__caret"
+              onClick={() => setCommitMenuOpen((v) => !v)}
+              disabled={busy}
+              title="More actions"
+              aria-label="More commit actions"
+              aria-haspopup="menu"
+              aria-expanded={commitMenuOpen}
+            >
+              {commitMenuOpen ? '▴' : '▾'}
+            </button>
+            {commitMenuOpen && commitMenuPos && createPortal(
+              <div
+                ref={commitMenuRef}
+                className="git-commit-btn__menu"
+                role="menu"
+                style={{ top: commitMenuPos.top, right: commitMenuPos.right }}
+              >
+                <button
+                  className="git-commit-btn__opt"
+                  role="menuitem"
+                  onClick={commitAndPush}
+                  disabled={busy || !commitMsg.trim() || data.files.length === 0}
+                  title={
+                    data.files.length === 0
+                      ? 'No changes'
+                      : !commitMsg.trim()
+                        ? 'Enter a commit message'
+                        : 'Stage all, commit and push'
+                  }
+                >
+                  <span className="git-commit-btn__opt-label">Commit + push</span>
+                  <span className="git-commit-btn__opt-sub">Stage all, commit, then git push</span>
+                </button>
+                <button
+                  className="git-commit-btn__opt"
+                  role="menuitem"
+                  onClick={stashFromCommit}
+                  disabled={busy || data.files.length === 0}
+                  title={
+                    data.files.length === 0
+                      ? 'Nothing to stash'
+                      : 'Stash all changes (with optional message)'
+                  }
+                >
+                  <span className="git-commit-btn__opt-label">Stash</span>
+                  <span className="git-commit-btn__opt-sub">Git stash push</span>
+                </button>
+              </div>,
+              document.body,
+            )}
+          </div>
+        </div>
         <button className="header__btn" onClick={pull} disabled={busy || data.behind === 0}>
-          pull
+          Pull
         </button>
         <button className="header__btn" onClick={push} disabled={busy || data.ahead === 0}>
-          push
+          Push
         </button>
         <button
           className={`header__btn ${prOpen ? 'header__btn--active' : ''}`}
           onClick={() => setPrOpen((v) => !v)}
           disabled={busy}
-          title="review a GitHub PR"
+          title="Review a GitHub PR"
         >
-          review PR
+          Review PR
         </button>
       </div>
 
@@ -793,7 +791,7 @@ export function GitPanel() {
             onClick={reviewPr}
             disabled={busy || !prInput.trim()}
           >
-            review
+            Review
           </button>
         </div>
       )}
@@ -803,7 +801,7 @@ export function GitPanel() {
         <div className="git-panel__op">
           <div className="git-panel__op-head">
             <span>{opOutput.label}</span>
-            <button className="git-panel__op-close" onClick={() => setOpOutput(null)} title="dismiss">✕</button>
+            <button className="git-panel__op-close" onClick={() => setOpOutput(null)} title="Dismiss">✕</button>
           </div>
           <pre className="git-panel__op-text">{opOutput.text}</pre>
         </div>
@@ -815,9 +813,9 @@ export function GitPanel() {
         {stagedFiles.length > 0 && (
           <>
             <div className="git-panel__section">
-              <span>staged ({stagedFiles.length})</span>
+              <span>Staged ({stagedFiles.length})</span>
               <button className="git-panel__bulk" onClick={unstageAll} disabled={busy}>
-                unstage all
+                Unstage all
               </button>
             </div>
             {renderTree(stagedTree, 0, true)}
@@ -826,16 +824,16 @@ export function GitPanel() {
         {unstagedFiles.length > 0 && (
           <>
             <div className="git-panel__section">
-              <span>changes ({unstagedFiles.length})</span>
+              <span>Changes ({unstagedFiles.length})</span>
               <button className="git-panel__bulk" onClick={stageAll} disabled={busy}>
-                stage all
+                Stage all
               </button>
             </div>
             {renderTree(unstagedTree, 0, false)}
           </>
         )}
         {data.files.length === 0 && (
-          <div className="git-panel__clean">working tree clean</div>
+          <div className="git-panel__clean">Working tree clean</div>
         )}
 
         <div className="git-panel__stash">
@@ -843,14 +841,14 @@ export function GitPanel() {
             className="git-panel__history-toggle"
             onClick={() => setStashOpen((v) => !v)}
           >
-            <span>{stashOpen ? '▾' : '▸'} stash ({stashes.length})</span>
+            <span>{stashOpen ? '▾' : '▸'} Stash ({stashes.length})</span>
           </button>
           {stashOpen && (
             <div className="git-stash">
               <div className="git-stash__save">
                 <input
                   className="field__input field__input--mono"
-                  placeholder="optional message"
+                  placeholder="Optional message"
                   value={stashMsg}
                   onChange={(e) => setStashMsg(e.target.value)}
                 />
@@ -858,13 +856,13 @@ export function GitPanel() {
                   className="header__btn"
                   onClick={stashSave}
                   disabled={busy || data.files.length === 0}
-                  title={data.files.length === 0 ? 'nothing to stash' : 'stash current changes'}
+                  title={data.files.length === 0 ? 'Nothing to stash' : 'Stash current changes'}
                 >
-                  stash
+                  Stash
                 </button>
               </div>
               {stashes.length === 0 && (
-                <div className="git-stash__empty">no stash entries</div>
+                <div className="git-stash__empty">No stash entries</div>
               )}
               {stashes.map((s) => (
                 <div className="git-stash__row" key={s.ref}>
@@ -874,15 +872,15 @@ export function GitPanel() {
                     className="git-stash__act"
                     onClick={() => stashPop(s.ref)}
                     disabled={busy}
-                    title="pop (apply + drop)"
+                    title="Pop (apply + drop)"
                   >
-                    pop
+                    Pop
                   </button>
                   <button
                     className="git-stash__act git-stash__act--danger"
                     onClick={() => stashDrop(s.ref)}
                     disabled={busy}
-                    title="drop (delete)"
+                    title="Drop (delete)"
                   >
                     ✕
                   </button>
@@ -898,7 +896,7 @@ export function GitPanel() {
               className="git-panel__history-toggle"
               onClick={() => setHistoryOpen((v) => !v)}
             >
-              <span>{historyOpen ? '▾' : '▸'} history ({commits.length})</span>
+              <span>{historyOpen ? '▾' : '▸'} History ({commits.length})</span>
             </button>
             {historyOpen && (
               <div className="git-panel__commits">
@@ -954,12 +952,12 @@ function FileRow({
   //   U (unmerged conflict)                    → !
   const label = code === '?' ? 'U' : code === 'U' ? '!' : (code ?? '·');
   const codeTitle =
-    code === '?' ? 'untracked (new file)' :
-    code === 'A' ? 'added' :
-    code === 'M' ? 'modified' :
-    code === 'D' ? 'deleted' :
-    code === 'R' ? 'renamed' :
-    code === 'U' ? 'unmerged conflict' :
+    code === '?' ? 'Untracked (new file)' :
+    code === 'A' ? 'Added' :
+    code === 'M' ? 'Modified' :
+    code === 'D' ? 'Deleted' :
+    code === 'R' ? 'Renamed' :
+    code === 'U' ? 'Unmerged conflict' :
     '';
   // Mostra solo il basename: il path completo è ricostruibile dalla gerarchia
   // della tree, e il title attribute lo rende disponibile su hover.
@@ -968,11 +966,11 @@ function FileRow({
   if (confirming && onDiscard) {
     return (
       <div className="git-row git-row--confirm" style={{ paddingLeft: indent }}>
-        <span className="git-row__confirm-text">discard {basename}?</span>
+        <span className="git-row__confirm-text">Discard {basename}?</span>
         <div className="git-row__confirm-actions">
-          <button className="header__btn" onClick={onCancelDiscard}>cancel</button>
+          <button className="header__btn" onClick={onCancelDiscard}>Cancel</button>
           <button className="header__btn header__btn--danger" onClick={onDiscard} disabled={busy}>
-            discard
+            Discard
           </button>
         </div>
       </div>
@@ -995,8 +993,8 @@ function FileRow({
           className="git-row__action git-row__action--discard"
           onClick={onRequestDiscard}
           disabled={busy}
-          title="discard changes"
-          aria-label="discard changes"
+          title="Discard changes"
+          aria-label="Discard changes"
         >
           <TrashIcon size={13} />
         </button>
@@ -1005,8 +1003,8 @@ function FileRow({
         className="git-row__action"
         onClick={onAction}
         disabled={busy}
-        title={staged ? 'unstage' : 'stage'}
-        aria-label={staged ? 'unstage' : 'stage'}
+        title={staged ? 'Unstage' : 'Stage'}
+        aria-label={staged ? 'Unstage' : 'Stage'}
       >
         {staged ? '−' : '+'}
       </button>

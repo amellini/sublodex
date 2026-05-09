@@ -1196,6 +1196,7 @@ function safeResolveInActive(rel: string): string | null {
 
 type ServerMsg =
   | { type: 'event'; event: unknown }
+  | { type: 'permission_request'; id: string; toolName: string; input: unknown }
   | { type: 'done' }
   | { type: 'error'; error: string };
 
@@ -1205,15 +1206,25 @@ type ClientAttachment = {
   mime: string;
 };
 
+type PermissionDecision = 'allow' | 'allow_always' | 'deny';
+
 type ClientMsg =
   | { type: 'send'; prompt: string; sessionId?: string; model?: string; permissionMode?: string; attachments?: ClientAttachment[] }
+  | { type: 'permission_response'; id: string; decision: PermissionDecision; payload?: string }
   | { type: 'cancel' };
+
+type PendingPermission = {
+  resolve: (r: import('@anthropic-ai/claude-agent-sdk').PermissionResult) => void;
+  toolName: string;
+};
 
 type WsData = {
   id: string;
   kind: 'ai';
   /** AbortController della query corrente */
   activeAbort?: AbortController;
+  /** Permission requests in attesa di risposta dal client (per id) */
+  pendingPermissions?: Map<string, PendingPermission>;
 };
 
 function buildClaudeEnv(): Record<string, string | undefined> {
@@ -1271,6 +1282,7 @@ async function runClaude(
   permissionMode: string | undefined,
   send: (m: ServerMsg) => void,
   registerAbort: (ac: AbortController) => void,
+  pendingPermissions: Map<string, PendingPermission>,
   attachments?: ClientAttachment[],
 ): Promise<void> {
   const project = activeProject(settings);
@@ -1284,10 +1296,12 @@ async function runClaude(
   }
 
   // ─── LOCAL: claude-agent-sdk in-process ───
+  const resolvedPermissionMode = (permissionMode || PERMISSION_MODE) as
+    'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+
   const opts: Parameters<typeof query>[0]['options'] = {
     cwd: project.path,
-    permissionMode: (permissionMode || PERMISSION_MODE) as
-      'default' | 'acceptEdits' | 'bypassPermissions' | 'plan',
+    permissionMode: resolvedPermissionMode,
     abortController: ac,
     includePartialMessages: true,
     env: buildClaudeEnv(),
@@ -1297,6 +1311,27 @@ async function runClaude(
   if (process.env.SUBLODEX_CLAUDE_BIN) {
     (opts as unknown as Record<string, unknown>).pathToClaudeCodeExecutable =
       process.env.SUBLODEX_CLAUDE_BIN;
+  }
+
+  // canUseTool wired only when the chosen mode actually needs user gating.
+  // - 'default': Claude asks for every tool that requires approval.
+  // - 'plan':    Claude calls ExitPlanMode → we surface Approva/Rivedi.
+  // - 'acceptEdits' / 'bypassPermissions': no callback (auto-approve flow).
+  if (resolvedPermissionMode === 'default' || resolvedPermissionMode === 'plan') {
+    opts.canUseTool = async (toolName, input) => {
+      const id = crypto.randomUUID();
+      log.info('claude', 'permission_request', { toolName, id });
+      return new Promise<import('@anthropic-ai/claude-agent-sdk').PermissionResult>((resolve) => {
+        pendingPermissions.set(id, { resolve, toolName });
+        // Se il client si disconnette / abort, sblocchiamo la promise con un deny.
+        ac.signal.addEventListener('abort', () => {
+          if (pendingPermissions.delete(id)) {
+            resolve({ behavior: 'deny', message: 'Aborted by user', interrupt: true });
+          }
+        }, { once: true });
+        send({ type: 'permission_request', id, toolName, input });
+      });
+    };
   }
 
   const hasImages = attachments && attachments.length > 0;
@@ -1833,22 +1868,51 @@ function countList(v: unknown): number {
 }
 
 /** Estrae name/description dalla frontmatter YAML di un SKILL.md.
- *  Parser inline minimale: cerca solo le chiavi root `name:` e `description:`
- *  fino al delimitatore `---` di chiusura. Sufficiente per il formato Anthropic
- *  standard (no nested keys, no multiline scalars). */
+ *  Gestisce: scalari inline (`key: value`), scalari quotati, e i due block
+ *  scalar YAML standard:
+ *    - `>` folded → newline interni diventano spazi
+ *    - `|` literal → newline preservati
+ *  Il body del block scalar è composto dalle righe indentate più di quanto
+ *  lo sia la chiave root (in pratica: qualsiasi indentazione > 0 al livello
+ *  root della frontmatter). Questa è la forma usata dalla maggior parte
+ *  delle skill Anthropic per descrizioni lunghe. */
 function parseSkillFrontmatter(raw: string): { name?: string; description?: string } {
   const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(raw);
   if (!m) return {};
+  const lines = m[1].split(/\r?\n/);
   const out: { name?: string; description?: string } = {};
-  for (const line of m[1].split(/\r?\n/)) {
-    const kv = /^(name|description)\s*:\s*(.+?)\s*$/.exec(line);
-    if (!kv) continue;
-    let val = kv[2];
-    // strip surrounding quotes
-    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-      val = val.slice(1, -1);
+
+  const stripQuotes = (s: string): string => {
+    const t = s.trim();
+    if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) {
+      return t.slice(1, -1);
     }
-    (out as any)[kv[1]] = val;
+    return t;
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const kv = /^(name|description)\s*:\s*(.*)$/.exec(lines[i]);
+    if (!kv) continue;
+    const key = kv[1] as 'name' | 'description';
+    const inline = kv[2].trim();
+
+    // Block scalar: > folded oppure | literal. Possibili indicatori di
+    // chomping (`>-`, `|+`, ecc.) — li tolleriamo ignorandoli.
+    const block = /^([>|])[+-]?\s*$/.exec(inline);
+    if (block) {
+      const folded = block[1] === '>';
+      const body: string[] = [];
+      let j = i + 1;
+      while (j < lines.length && /^\s+\S/.test(lines[j])) {
+        body.push(lines[j].replace(/^\s+/, ''));
+        j++;
+      }
+      out[key] = folded ? body.join(' ').trim() : body.join('\n').trim();
+      i = j - 1;
+      continue;
+    }
+
+    out[key] = stripQuotes(inline);
   }
   return out;
 }
@@ -3053,15 +3117,25 @@ const server = Bun.serve<WsData, {}>({
         diffTruncated,
       ].join('\n');
 
+      const ac = new AbortController();
+      const timeoutId = setTimeout(
+        () => ac.abort(new Error('Commit message generation timed out (45 s)')),
+        45_000,
+      );
       try {
         let result = '';
         const opts: Parameters<typeof query>[0]['options'] = {
           cwd: project.path,
-          permissionMode: 'plan' as const,
-          abortController: new AbortController(),
+          permissionMode: 'bypassPermissions' as const,
+          abortController: ac,
           env: buildClaudeEnv(),
           maxTurns: 1,
+          tools: [],
         };
+        if (process.env.SUBLODEX_CLAUDE_BIN) {
+          (opts as unknown as Record<string, unknown>).pathToClaudeCodeExecutable =
+            process.env.SUBLODEX_CLAUDE_BIN;
+        }
         for await (const msg of query({ prompt, options: opts })) {
           const ev = msg as unknown as Record<string, unknown>;
           if (ev.type === 'assistant' && typeof ev.message === 'object' && ev.message) {
@@ -3075,8 +3149,13 @@ const server = Bun.serve<WsData, {}>({
             }
           }
         }
+        clearTimeout(timeoutId);
+        if (!result.trim()) {
+          return Response.json({ error: 'Claude returned no text — try again' }, { status: 500 });
+        }
         return Response.json({ message: result.trim() });
       } catch (err) {
+        clearTimeout(timeoutId);
         log.error('generate-commit-msg', 'failed', { err: String(err) });
         return Response.json(
           { error: err instanceof Error ? err.message : String(err) },
@@ -3367,6 +3446,7 @@ const server = Bun.serve<WsData, {}>({
         return;
       }
       if (msg.type === 'send') {
+        ws.data.pendingPermissions = new Map();
         try {
           await runClaude(
             msg.prompt,
@@ -3375,6 +3455,7 @@ const server = Bun.serve<WsData, {}>({
             msg.permissionMode,
             (m) => { try { ws.send(JSON.stringify(m)); } catch { /* closed */ } },
             (ac) => { ws.data.activeAbort = ac; },
+            ws.data.pendingPermissions,
             msg.attachments,
           );
         } catch (err) {
@@ -3384,6 +3465,77 @@ const server = Bun.serve<WsData, {}>({
           } satisfies ServerMsg));
         } finally {
           ws.data.activeAbort = undefined;
+          // Sblocca eventuali permission ancora in attesa (deny-all).
+          if (ws.data.pendingPermissions) {
+            for (const p of ws.data.pendingPermissions.values()) {
+              p.resolve({ behavior: 'deny', message: 'Session ended' });
+            }
+            ws.data.pendingPermissions.clear();
+          }
+        }
+        return;
+      }
+      if (msg.type === 'permission_response') {
+        const pending = ws.data.pendingPermissions?.get(msg.id);
+        if (!pending) {
+          log.warn('claude', 'permission_response without pending', { id: msg.id });
+          return;
+        }
+        ws.data.pendingPermissions!.delete(msg.id);
+
+        const isPlanApproval = pending.toolName === 'ExitPlanMode';
+        const isUserQuestion = pending.toolName === 'AskUserQuestion';
+
+        // AskUserQuestion: il "permission gate" è in realtà la risposta dell'utente.
+        // Non possiamo mutare il tool_result da canUseTool, quindi usiamo deny+message
+        // per recapitare la scelta a Claude in modo affidabile (il modello legge il
+        // messaggio di deny e prosegue). `interrupt: false` lascia che il turno
+        // continui dopo aver ricevuto la risposta.
+        if (isUserQuestion) {
+          const answer = (msg.payload ?? '').trim();
+          pending.resolve({
+            behavior: 'deny',
+            message: answer
+              ? `The user answered: ${answer}`
+              : 'The user did not answer the question.',
+            interrupt: false,
+          });
+          return;
+        }
+
+        if (msg.decision === 'deny') {
+          // ExitPlanMode deny → l'utente vuole rivedere il piano. Diamo un
+          // messaggio esplicito così Claude può iterare senza terminare il turno.
+          pending.resolve({
+            behavior: 'deny',
+            message: isPlanApproval
+              ? 'The user wants to revise the plan. Ask them what to change before proposing again.'
+              : 'User denied',
+            interrupt: true,
+          });
+        } else if (msg.decision === 'allow_always') {
+          pending.resolve({
+            behavior: 'allow',
+            updatedPermissions: [{
+              type: 'addRules',
+              rules: [{ toolName: pending.toolName }],
+              behavior: 'allow',
+              destination: 'session',
+            }],
+          });
+        } else if (isPlanApproval) {
+          // Plan approvato → eleviamo il mode a 'acceptEdits' per la sessione
+          // così Claude può procedere con l'implementazione senza ulteriori prompt.
+          pending.resolve({
+            behavior: 'allow',
+            updatedPermissions: [{
+              type: 'setMode',
+              mode: 'acceptEdits',
+              destination: 'session',
+            }],
+          });
+        } else {
+          pending.resolve({ behavior: 'allow' });
         }
         return;
       }
@@ -3395,6 +3547,12 @@ const server = Bun.serve<WsData, {}>({
 
     close(ws) {
       ws.data.activeAbort?.abort();
+      if (ws.data.pendingPermissions) {
+        for (const p of ws.data.pendingPermissions.values()) {
+          p.resolve({ behavior: 'deny', message: 'Connection closed' });
+        }
+        ws.data.pendingPermissions.clear();
+      }
     },
   },
 });

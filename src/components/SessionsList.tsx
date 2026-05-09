@@ -119,7 +119,7 @@ export function SessionsList() {
   };
 
   if (groups.length === 0) {
-    return <div className="sessions-list__empty">no projects yet</div>;
+    return <div className="sessions-list__empty">No projects yet</div>;
   }
 
   return (
@@ -137,7 +137,7 @@ export function SessionsList() {
                 <button
                   className="sessions-group__toggle"
                   onClick={() => toggleCollapsed(g.projectId)}
-                  title={isCollapsed ? 'expand' : 'collapse'}
+                  title={isCollapsed ? 'Expand' : 'Collapse'}
                 >
                   <ChevronRight
                     size={10}
@@ -154,14 +154,14 @@ export function SessionsList() {
                   className="sessions-group__add"
                   onClick={() => void createNewIn(g.projectId)}
                   disabled={isStreaming}
-                  title="new session in this project"
+                  title="New session in this project"
                 >
                   +
                 </button>
               </div>
 
               {!isCollapsed && g.sessions.length === 0 && (
-                <div className="sessions-group__empty">no sessions yet</div>
+                <div className="sessions-group__empty">No sessions yet</div>
               )}
 
               {!isCollapsed && g.sessions.map((s) => {
@@ -210,7 +210,7 @@ export function SessionsList() {
                         <button
                           type="button"
                           className="sessions-list__rename"
-                          title="rename"
+                          title="Rename"
                           onClick={(e) => { e.stopPropagation(); startRename(g.projectId, s); }}
                         >
                           <PencilIcon size={14} />
@@ -218,7 +218,7 @@ export function SessionsList() {
                         <button
                           type="button"
                           className="sessions-list__delete"
-                          title="delete session"
+                          title="Delete session"
                           onClick={(e) => { e.stopPropagation(); requestDelete(g.projectId, s.id); }}
                           disabled={isStreaming}
                         >
@@ -234,14 +234,14 @@ export function SessionsList() {
                           className="sessions-list__confirm-cancel"
                           onClick={() => setConfirmDelete(null)}
                         >
-                          cancel
+                          Cancel
                         </button>
                         <button
                           type="button"
                           className="sessions-list__confirm-delete"
                           onClick={() => void doDelete(g.projectId, s.id)}
                         >
-                          delete
+                          Delete
                         </button>
                       </div>
                     )}

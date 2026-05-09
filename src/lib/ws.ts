@@ -1,4 +1,4 @@
-import type { Attachment, ClientMessage, ServerMessage } from './types';
+import type { Attachment, ClientMessage, PermissionDecision, ServerMessage } from './types';
 import { useStore } from './store';
 import { useSettings, activeProject } from './settings';
 import { useUI } from './ui';
@@ -71,8 +71,11 @@ export function connect(): void {
         if (msg.event.type === 'system' && _pendingProjectId) {
           persistCurrentConversation(_pendingProjectId, _pendingSessionFsId);
         }
+      } else if (msg.type === 'permission_request') {
+        store.setPendingPermission({ id: msg.id, toolName: msg.toolName, input: msg.input });
       } else if (msg.type === 'done') {
         store.setStreaming(false);
+        store.setPendingPermission(null);
         if (_pendingProjectId) persistCurrentConversation(_pendingProjectId, _pendingSessionFsId);
         _pendingProjectId = null;
         _pendingSessionFsId = undefined;
@@ -84,6 +87,7 @@ export function connect(): void {
       else if (msg.type === 'error') {
         store.setError(msg.error);
         store.setStreaming(false);
+        store.setPendingPermission(null);
         if (_pendingProjectId) persistCurrentConversation(_pendingProjectId, _pendingSessionFsId);
         _pendingProjectId = null;
         _pendingSessionFsId = undefined;
@@ -108,6 +112,7 @@ export function connect(): void {
       // Non persistiamo: la conversazione corrente è incompleta. Sarà
       // persistita normalmente al prossimo `done`.
     }
+    store.setPendingPermission(null);
     // Stream interrotto a metà → invalidiamo le pending: al prossimo
     // `sendPrompt` verranno ricatturate dal progetto allora attivo.
     _pendingProjectId = null;
@@ -172,6 +177,14 @@ export function sendPrompt(prompt: string, attachments: Attachment[] = []): void
 
 export function cancel(): void {
   rawSend({ type: 'cancel' });
+}
+
+/** Invia la risposta dell'utente a una permission_request del server.
+ *  `payload` è la risposta libera dell'utente per AskUserQuestion (label
+ *  selezionata o testo digitato). Pulisce subito lo stato locale. */
+export function respondToPermission(id: string, decision: PermissionDecision, payload?: string): void {
+  rawSend({ type: 'permission_response', id, decision, payload });
+  useStore.getState().setPendingPermission(null);
 }
 
 /** Evento custom DOM emesso quando un comando opsx archive/propose è

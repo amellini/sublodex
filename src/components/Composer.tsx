@@ -10,7 +10,7 @@ import { keymap } from '@milkdown/prose/keymap';
 import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/react';
 import { replaceAll } from '@milkdown/utils';
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { cancel, sendPrompt } from '../lib/ws';
+import { cancel, respondToPermission, sendPrompt } from '../lib/ws';
 import { useStore } from '../lib/store';
 import { useSettings, activeProject } from '../lib/settings';
 import { MODELS } from '../lib/commands';
@@ -28,10 +28,14 @@ import {
 import { ComposerAttachmentChip } from './ComposerAttachments';
 import { UsagePop } from './UsagePop';
 
-/** Dimensione context window per modello. */
-function contextWindowSize(model: string | undefined): number {
-  if (model?.includes('opus-4-7')) return 1_000_000;
-  return 200_000;
+const PERM_OPTIONS: Array<{ value: string; label: string; hint: string }> = [
+  { value: 'plan',         label: 'Planning',              hint: 'read-only · proposes a plan to approve' },
+  { value: 'default',      label: 'Richiedi approvazione', hint: 'asks before each tool use' },
+  { value: 'acceptEdits',  label: 'Accetta modifiche',     hint: 'auto-approves edits' },
+];
+
+function permLabel(v: string | undefined): string {
+  return PERM_OPTIONS.find((o) => o.value === v)?.label ?? 'Mode';
 }
 
 const placeholderKey = new PluginKey('composer-placeholder');
@@ -166,27 +170,16 @@ export function Composer() {
   const runtimeModel  = useStore((s) => s.runtimeModel);
   const setModel      = useStore((s) => s.setModel);
   const resetSession  = useStore((s) => s.resetSession);
-  const lastTurnInput      = useStore((s) => s.lastTurnInput);
-  const totalInput         = useStore((s) => s.totalInput);
-  const turns              = useStore((s) => s.turns);
-  const modelContextWindow = useStore((s) => s.modelContextWindow);
+  const permissionMode    = useStore((s) => s.permissionMode);
+  const setPermissionMode = useStore((s) => s.setPermissionMode);
+  const pendingPermission = useStore((s) => s.pendingPermission);
   const settings           = useSettings((s) => s.settings);
   const project            = activeProject(settings);
-
-  // Usa il context window reale riportato dall'SDK; fallback al valore per modello.
-  const ctxSize = modelContextWindow > 0 ? modelContextWindow : contextWindowSize(model ?? runtimeModel);
-  const ctxPct  = lastTurnInput > 0 ? Math.min(1, lastTurnInput / ctxSize) : 0;
-  const ctxTone = ctxPct >= 0.9 ? 'danger' : ctxPct >= 0.7 ? 'warn' : 'ok';
-
-  /** Formatta un numero di token in forma compatta: 28450 → "28.5k", 200000 → "200k" */
-  const fmtK = (n: number) =>
-    n >= 1_000_000 ? `${+(n / 1_000_000).toFixed(1)}M`
-    : n >= 1000    ? `${+(n / 1000).toFixed(1)}k`
-    : `${n}`;
 
   const [initialDraft] = useState(() => localStorage.getItem(DRAFT_KEY) ?? '');
   const [hasContent, setHasContent] = useState(() => !!initialDraft.trim());
   const [modelOpen, setModelOpen]   = useState(false);
+  const [permOpen, setPermOpen]     = useState(false);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
 
@@ -234,6 +227,7 @@ export function Composer() {
   const submitRef      = useRef<() => void>(() => {});
   const resetEditorRef = useRef<() => void>(() => {});
   const modelRef       = useRef<HTMLDivElement>(null);
+  const permRef        = useRef<HTMLDivElement>(null);
   const fileInputRef   = useRef<HTMLInputElement>(null);
   const attachmentsRef = useRef<PendingAttachment[]>([]);
 
@@ -248,6 +242,15 @@ export function Composer() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [modelOpen]);
+
+  useEffect(() => {
+    if (!permOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (!permRef.current?.contains(e.target as Node)) setPermOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [permOpen]);
 
   // Cleanup al unmount: revoca tutti gli objectURL pendenti.
   useEffect(() => {
@@ -437,6 +440,7 @@ export function Composer() {
             height:auto (solo il testo), mentre il container .milkdown ha
             min-height:72px — clic nell'area vuota non raggiungono l'editor. */}
         <div
+          className="composer__editor"
           onClick={(e) => {
             const pm = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.ProseMirror');
             if (pm && !pm.contains(e.target as Node)) pm.focus();
@@ -449,45 +453,44 @@ export function Composer() {
               mdRef={mdRef}
               onContentChange={setHasContent}
               onDraftSave={saveDraft}
-              placeholder={isStreaming ? 'claude is working…' : 'talk to claude…'}
+              placeholder={isStreaming ? 'Claude is working…' : 'Talk to claude…'}
               onPasteImages={handleFiles}
               initialValue={initialDraft}
             />
           </MilkdownProvider>
+          {pendingPermission?.toolName === 'ExitPlanMode' && (
+            <div className="composer__plan-actions">
+              <button
+                className="composer__plan-review"
+                onClick={() => respondToPermission(pendingPermission.id, 'deny')}
+                title="Send the plan back for revision"
+              >
+                Rivedi
+              </button>
+              <button
+                className="composer__plan-approve"
+                onClick={() => respondToPermission(pendingPermission.id, 'allow')}
+                title="Approve and proceed"
+              >
+                Approva piano
+              </button>
+            </div>
+          )}
         </div>
         <div className="composer__bar">
           <span className="composer__hint">
             {uploadingCount > 0 ? (
-              <>caricamento {uploadingCount} immagin{uploadingCount === 1 ? 'e' : 'i'}…</>
+              <>Caricamento {uploadingCount} immagin{uploadingCount === 1 ? 'e' : 'i'}…</>
             ) : errorCount > 0 ? (
               <span className="composer__hint-err">
                 {errorCount} allegat{errorCount === 1 ? 'o' : 'i'} non valid{errorCount === 1 ? 'o' : 'i'}
               </span>
             ) : (
               <>
-                <kbd>↵</kbd> send · <kbd>⇧↵</kbd> newline · <kbd>📎</kbd> trascina, incolla o clicca
+                <kbd>↵</kbd> Send · <kbd>⇧↵</kbd> Newline · <kbd>📎</kbd> Trascina, incolla o clicca
               </>
             )}
           </span>
-
-          {/* context window bar — sempre visibile */}
-          <div
-            className={`composer__ctx composer__ctx--${ctxTone}`}
-            title={[
-              `ultimo turno:  ${lastTurnInput.toLocaleString()} / ${ctxSize.toLocaleString()} tok`,
-              `totale turni:  ${turns}`,
-              `input totale:  ${totalInput.toLocaleString()} tok (cumulativo × turni)`,
-            ].join('\n')}
-          >
-            <div className="composer__ctx-track">
-              <div className="composer__ctx-fill" style={{ width: `${ctxPct * 100}%` }} />
-              <span className="composer__ctx-label">
-                {ctxPct > 0
-                  ? `${Math.round(ctxPct * 100)}% · ${fmtK(lastTurnInput)} / ${fmtK(ctxSize)}`
-                  : `— / ${fmtK(ctxSize)}`}
-              </span>
-            </div>
-          </div>
 
           {/* file picker nascosto */}
           <input
@@ -501,7 +504,7 @@ export function Composer() {
           <button
             className="composer__attach"
             onClick={onPickClick}
-            title="allega immagine"
+            title="Allega immagine"
             type="button"
           >
             📎
@@ -511,17 +514,42 @@ export function Composer() {
             <button
               className="composer__clear"
               onClick={() => { localStorage.removeItem(DRAFT_KEY); resetSession(); }}
-              title="clear conversation (/clear)"
+              title="Clear conversation (/clear)"
             >
-              ⌫ clear
+              ⌫ Clear
             </button>
           )}
+
+          <div className="composer__perm-wrap" ref={permRef}>
+            <button
+              className={`composer__perm composer__perm--${permissionMode}`}
+              onClick={() => setPermOpen((o) => !o)}
+              title="Switch permission mode"
+            >
+              {permLabel(permissionMode)}
+              <span className="composer__perm-arrow">{permOpen ? '▴' : '▾'}</span>
+            </button>
+            {permOpen && (
+              <div className="composer__perm-drop">
+                {PERM_OPTIONS.map((o) => (
+                  <button
+                    key={o.value}
+                    className={`composer__perm-opt${permissionMode === o.value ? ' composer__perm-opt--active' : ''}`}
+                    onClick={() => { setPermissionMode(o.value); setPermOpen(false); }}
+                  >
+                    {o.label}
+                    <span className="composer__perm-opt-hint">{o.hint}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           <div className="composer__model-wrap" ref={modelRef}>
             <button
               className="composer__model"
               onClick={() => setModelOpen((o) => !o)}
-              title="switch model"
+              title="Switch model"
             >
               {shortModel(model ?? runtimeModel)}
               <span className="composer__model-arrow">{modelOpen ? '▴' : '▾'}</span>
@@ -543,7 +571,7 @@ export function Composer() {
                     className="composer__model-opt composer__model-opt--reset"
                     onClick={() => { setModel(undefined); setModelOpen(false); }}
                   >
-                    reset to default
+                    Reset to default
                   </button>
                 )}
               </div>
@@ -551,14 +579,14 @@ export function Composer() {
           </div>
 
           {isStreaming ? (
-            <button className="composer__cancel" onClick={cancel}>stop</button>
+            <button className="composer__cancel" onClick={cancel}>Stop</button>
           ) : (
             <button
               className="composer__send"
               onClick={() => submitRef.current()}
               disabled={sendDisabled}
             >
-              send
+              Send
             </button>
           )}
 
@@ -567,7 +595,7 @@ export function Composer() {
             <button
               className={`composer__usage-btn${usageOpen ? ' composer__usage-btn--active' : ''}`}
               onClick={toggleUsage}
-              title="utilizzo piano"
+              title="Utilizzo piano"
               type="button"
             >
               ≋
@@ -575,12 +603,12 @@ export function Composer() {
             {usageOpen && (
               <div className="composer__usage-pop">
                 {usageLoading && (
-                  <div className="composer__usage-loading">caricamento…</div>
+                  <div className="composer__usage-loading">Caricamento…</div>
                 )}
                 {usageError && !usageLoading && (
                   <div className="composer__usage-error">
-                    errore: {usageError}
-                    <button onClick={() => void fetchUsage()}>riprova</button>
+                    Errore: {usageError}
+                    <button onClick={() => void fetchUsage()}>Riprova</button>
                   </div>
                 )}
                 {usageData && !usageLoading && (

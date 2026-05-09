@@ -65,6 +65,12 @@ type Store = {
   model?: string;
   permissionMode: string;
 
+  /** Richiesta di permesso pendente dal server (canUseTool callback).
+   *  Quando non-null, l'UI mostra il prompt corrispondente (PermissionPrompt
+   *  generico, oppure overlay Approva/Rivedi se toolName === 'ExitPlanMode',
+   *  oppure QuestionCard se toolName === 'AskUserQuestion'). */
+  pendingPermission: { id: string; toolName: string; input: unknown } | null;
+
   /** modello effettivamente in uso, riportato da claude nei `system/init` events */
   runtimeModel?: string;
 
@@ -94,6 +100,7 @@ type Store = {
   setError: (err?: string) => void;
   setModel: (m?: string) => void;
   setPermissionMode: (m: string) => void;
+  setPendingPermission: (p: Store['pendingPermission']) => void;
   setStreamSpeed: (s: StreamSpeed) => void;
   resetSession: () => void;
 
@@ -127,7 +134,7 @@ function normalizeFilePath(p: string): string {
 
 const toolStreams = new Map<string, ToolStreamState>();
 
-const DEFAULT_PERMISSION = 'bypassPermissions';
+const DEFAULT_PERMISSION = 'default';
 
 /* ---------- typewriter tick ---------- */
 
@@ -181,6 +188,7 @@ export const useStore = create<Store>((set, get) => ({
   streamingFiles: {},
   streamSpeed: SAVED_SPEED,
   permissionMode: DEFAULT_PERMISSION,
+  pendingPermission: null,
   totalCost: 0,
   totalInput: 0,
   totalOutput: 0,
@@ -245,6 +253,7 @@ export const useStore = create<Store>((set, get) => ({
   setError: (err) => set({ lastError: err }),
   setModel: (m) => set({ model: m }),
   setPermissionMode: (m) => set({ permissionMode: m }),
+  setPendingPermission: (p) => set({ pendingPermission: p }),
 
   resetSession: () => {
     toolStreams.clear();
@@ -256,6 +265,7 @@ export const useStore = create<Store>((set, get) => ({
       streamingFiles: {},
       openFiles: [],
       activeFile: undefined,
+      pendingPermission: null,
       totalCost: 0,
       totalInput: 0,
       totalOutput: 0,

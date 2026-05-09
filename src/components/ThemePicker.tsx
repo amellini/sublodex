@@ -3,11 +3,11 @@ import { useTheme, resolveTheme, type ThemeSettings } from '../lib/themeStore';
 import { THEMES, THEME_LIST, type ThemeId, type Scope } from '../lib/themes';
 
 const SCOPE_TABS: { id: Scope; label: string; hint: string }[] = [
-  { id: 'global',   label: 'Global',   hint: 'all panels at once' },
-  { id: 'editor',   label: 'Editor',   hint: 'monaco code editor (right)' },
-  { id: 'center',   label: 'Chat',     hint: 'conversation panel (center)' },
-  { id: 'sidebar',  label: 'Sidebar',  hint: 'commands & files (left)' },
-  { id: 'terminal', label: 'Terminal', hint: 'shell panel (bottom)' },
+  { id: 'global',   label: 'Global',   hint: 'All panels at once' },
+  { id: 'editor',   label: 'Editor',   hint: 'Monaco code editor (right)' },
+  { id: 'center',   label: 'Chat',     hint: 'Conversation panel (center)' },
+  { id: 'sidebar',  label: 'Sidebar',  hint: 'Commands & files (left)' },
+  { id: 'terminal', label: 'Terminal', hint: 'Shell panel (bottom)' },
 ];
 
 export function ThemePicker({ onClose }: { onClose: () => void }) {
@@ -35,7 +35,7 @@ export function ThemePicker({ onClose }: { onClose: () => void }) {
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal modal--themes" onClick={(e) => e.stopPropagation()}>
         <div className="modal__head">
-          <h2 className="modal__title">themes</h2>
+          <h2 className="modal__title">Themes</h2>
           <button className="header__btn" onClick={onClose}>✕</button>
         </div>
 
@@ -59,7 +59,7 @@ export function ThemePicker({ onClose }: { onClose: () => void }) {
               onClick={() => setForScope(null)}
             >
               <div className="tp__card-name">Inherit from global</div>
-              <div className="tp__card-sub">currently using <strong>{THEMES[inheritedId!].label}</strong></div>
+              <div className="tp__card-sub">Currently using <strong>{THEMES[inheritedId!].label}</strong></div>
             </button>
           )}
 
@@ -78,7 +78,7 @@ export function ThemePicker({ onClose }: { onClose: () => void }) {
                   <div className="tp__card-meta">
                     <span className="tp__card-name">{th.label}</span>
                     <span className={`tp__chip tp__chip--${th.isDark ? 'dark' : 'light'}`}>
-                      {th.isDark ? 'dark' : 'light'}
+                      {th.isDark ? 'Dark' : 'Light'}
                     </span>
                   </div>
                 </button>
@@ -91,12 +91,12 @@ export function ThemePicker({ onClose }: { onClose: () => void }) {
           <button
             className="header__btn"
             onClick={() => t.resetAll()}
-            title="reset all scopes to monokai"
+            title="Reset all scopes to monokai"
           >
-            reset all
+            Reset all
           </button>
           <span className="modal__spacer" />
-          <button className="header__btn" onClick={onClose}>close</button>
+          <button className="header__btn" onClick={onClose}>Close</button>
         </div>
       </div>
     </div>

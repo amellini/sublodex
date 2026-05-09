@@ -75,7 +75,7 @@ export function HeaderMenu({ items }: { items: HeaderMenuItem[] }) {
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
-        title="menu"
+        title="Menu"
       >
         <span className="header-menu__glyph" aria-hidden="true">☰</span>
       </button>

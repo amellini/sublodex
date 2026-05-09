@@ -113,13 +113,13 @@ function TerminalContainer({ active, toggleTerminal }: {
   return (
     <div className="terminal" ref={ref}>
       <div className="terminal__head">
-        <span className="terminal__label">terminal</span>
+        <span className="terminal__label">Terminal</span>
         <span className="terminal__path">
           {remoteLabel
             ? <><span className="terminal__remote-pill">ssh</span> {remoteLabel}:{active?.path}</>
             : active?.path}
         </span>
-        <button className="header__btn" onClick={toggleTerminal} title="close terminal">✕</button>
+        <button className="header__btn" onClick={toggleTerminal} title="Close terminal">✕</button>
       </div>
       {active && <TerminalPane key={termKey} project={active} />}
     </div>

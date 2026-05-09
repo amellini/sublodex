@@ -131,11 +131,11 @@ export function FileTree() {
       <div className="ftree__head">
         <input
           className="ftree__filter"
-          placeholder="filter… (e.g. .py)"
+          placeholder="Filter… (e.g. .py)"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
-        <button className="ftree__refresh" onClick={load} title="refresh">⟳</button>
+        <button className="ftree__refresh" onClick={load} title="Refresh">⟳</button>
       </div>
 
       {data?.root && (
@@ -145,10 +145,10 @@ export function FileTree() {
       )}
 
       <div className="ftree__list">
-        {loading && <div className="ftree__msg">loading…</div>}
+        {loading && <div className="ftree__msg">Loading…</div>}
         {error && <div className="ftree__error">{error}</div>}
         {!loading && !error && data && filteredTree.length === 0 && (
-          <div className="ftree__msg">{filter ? 'no matches' : 'empty project'}</div>
+          <div className="ftree__msg">{filter ? 'No matches' : 'Empty project'}</div>
         )}
         {filteredTree.map((node) => (
           <NodeRow
@@ -222,7 +222,7 @@ const NodeRow = memo(function NodeRow({ node, depth, confirmDelete }: NodeRowPro
         {!isPendingDelete && (
           <button
             className="fnode__trash"
-            title={node.isDir ? 'delete folder (recursive)' : 'delete file'}
+            title={node.isDir ? 'Delete folder (recursive)' : 'Delete file'}
             onClick={(e) => { e.stopPropagation(); setPendingDelete(node.path); }}
           >
             ✕
@@ -231,10 +231,10 @@ const NodeRow = memo(function NodeRow({ node, depth, confirmDelete }: NodeRowPro
       </div>
       {isPendingDelete && (
         <div className="fnode-confirm" style={{ paddingLeft: 8 + depth * 12 }}>
-          <span>delete <b>{node.name}</b>{node.isDir ? ' and everything inside' : ''}?</span>
+          <span>Delete <b>{node.name}</b>{node.isDir ? ' and everything inside' : ''}?</span>
           <div className="fnode-confirm__actions">
-            <button className="fnode-confirm__cancel" onClick={() => setPendingDelete(null)}>cancel</button>
-            <button className="fnode-confirm__yes" onClick={() => confirmDelete(node.path)}>delete</button>
+            <button className="fnode-confirm__cancel" onClick={() => setPendingDelete(null)}>Cancel</button>
+            <button className="fnode-confirm__yes" onClick={() => confirmDelete(node.path)}>Delete</button>
           </div>
         </div>
       )}

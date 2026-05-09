@@ -57,7 +57,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     const id = crypto.randomUUID();
     const newProj: Project = {
       id,
-      name: 'new project',
+      name: 'New project',
       path: '',
       instructions: '',
     };
@@ -76,7 +76,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     if (next.length === 0) {
       next = [{
         id: crypto.randomUUID(),
-        name: 'workspace',
+        name: 'Workspace',
         path: '',
         instructions: '',
       }];
@@ -105,20 +105,20 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       // l'utente da un cryptic "Unexpected token <" mostrando un messaggio
       // chiaro e azionabile invece.
       if (text.trimStart().startsWith('<')) {
-        setBrowseError('folder picker did not respond — paste the path manually instead');
+        setBrowseError('Folder picker did not respond — paste the path manually instead');
         return;
       }
       let j: { path?: string; error?: string; canceled?: boolean };
       try { j = JSON.parse(text); }
-      catch { setBrowseError('invalid response from folder picker'); return; }
+      catch { setBrowseError('Invalid response from folder picker'); return; }
       if (j.path) {
         const seg = j.path.split(/[\/\\]/).filter(Boolean).pop() ?? '';
         if (selected) {
           const patch: Partial<Project> = { path: j.path };
           if (
             !selected.name.trim() ||
-            selected.name === 'new project' ||
-            selected.name === 'workspace'
+            selected.name === 'New project' ||
+            selected.name === 'Workspace'
           ) {
             patch.name = seg || selected.name;
           }
@@ -129,7 +129,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       }
     } catch (err) {
       if ((err as { name?: string })?.name === 'AbortError') {
-        setBrowseError('folder picker timed out — paste the path manually instead');
+        setBrowseError('Folder picker timed out — paste the path manually instead');
       } else {
         setBrowseError(String(err));
       }
@@ -167,7 +167,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     <div className="modal-backdrop">
       <div className="modal modal--wide">
         <div className="modal__head">
-          <h2 className="modal__title">projects</h2>
+          <h2 className="modal__title">Projects</h2>
           <button className="header__btn" onClick={onClose}>✕</button>
         </div>
 
@@ -175,7 +175,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
         <div className="settings-body">
           <aside className="settings-list">
-            <div className="settings-list__head">projects</div>
+            <div className="settings-list__head">Projects</div>
             <div className="settings-list__items">
               {projects.map((p) => (
                 <div
@@ -188,12 +188,12 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedId(p.id); }}
                 >
                   <span className={`settings-item__dot ${activeId === p.id ? 'settings-item__dot--on' : ''}`} />
-                  <span className="settings-item__name">{p.name || '(no name)'}</span>
+                  <span className="settings-item__name">{p.name || '(No name)'}</span>
                   <span className="settings-item__path">{shortPath(p.path)}</span>
                   <button
                     type="button"
                     className="settings-item__del"
-                    title="delete project"
+                    title="Delete project"
                     onClick={(e) => {
                       e.stopPropagation();
                       setSelectedId(p.id);
@@ -206,42 +206,42 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               ))}
             </div>
             <button className="settings-list__new" onClick={addNew}>
-              + new project
+              + New project
             </button>
           </aside>
 
           <section className="settings-detail">
             {!selected ? (
-              <div className="settings-detail__empty">select a project</div>
+              <div className="settings-detail__empty">Select a project</div>
             ) : (
               <>
                 <div className="settings-detail__head">
                   {activeId === selected.id ? (
-                    <span className="settings-detail__badge settings-detail__badge--active">active</span>
+                    <span className="settings-detail__badge settings-detail__badge--active">Active</span>
                   ) : (
                     <button className="header__btn" onClick={() => setAsActive(selected.id)}>
-                      set as active
+                      Set as active
                     </button>
                   )}
                   <button
                     className="header__btn"
                     onClick={() => setConfirmWipe(selected.id)}
-                    title="delete the saved conversation for this project"
+                    title="Delete the saved conversation for this project"
                   >
-                    🗑 wipe conversation
+                    🗑 Wipe conversation
                   </button>
                   {wipedFlash === selected.id && (
-                    <span className="settings-detail__flash">conversation deleted</span>
+                    <span className="settings-detail__flash">Conversation deleted</span>
                   )}
                 </div>
 
                 {confirmDelete === selected.id && (
                   <div className="settings-confirm">
-                    <span>delete <b>{selected.name}</b>? the folder is not removed.</span>
+                    <span>Delete <b>{selected.name}</b>? the folder is not removed.</span>
                     <div className="settings-confirm__actions">
-                      <button className="header__btn" onClick={() => setConfirmDelete(null)}>cancel</button>
+                      <button className="header__btn" onClick={() => setConfirmDelete(null)}>Cancel</button>
                       <button className="header__btn header__btn--danger" onClick={() => doDelete(selected.id)}>
-                        delete
+                        Delete
                       </button>
                     </div>
                   </div>
@@ -249,9 +249,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
                 {confirmWipe === selected.id && (
                   <div className="settings-confirm">
-                    <span>delete the saved conversation for <b>{selected.name}</b>? the file tree is not touched.</span>
+                    <span>Delete the saved conversation for <b>{selected.name}</b>? the file tree is not touched.</span>
                     <div className="settings-confirm__actions">
-                      <button className="header__btn" onClick={() => setConfirmWipe(null)}>cancel</button>
+                      <button className="header__btn" onClick={() => setConfirmWipe(null)}>Cancel</button>
                       <button
                         className="header__btn header__btn--danger"
                         onClick={async () => {
@@ -264,14 +264,14 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                           setTimeout(() => setWipedFlash(null), 1800);
                         }}
                       >
-                        wipe
+                        Wipe
                       </button>
                     </div>
                   </div>
                 )}
 
                 <label className="field">
-                  <span className="field__label">name</span>
+                  <span className="field__label">Name</span>
                   <input
                     className="field__input"
                     value={selected.name}
@@ -281,7 +281,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                 </label>
 
                 <div className="field">
-                  <span className="field__label">path</span>
+                  <span className="field__label">Path</span>
                   <div className="field__row">
                     <input
                       className="field__input field__input--mono"
@@ -292,7 +292,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                     {!selected.remote && (
                       <button className="field__browse" onClick={browse} type="button" disabled={browsing}>
                         <FolderIcon size={14} />
-                        <span>{browsing ? 'opening…' : 'browse'}</span>
+                        <span>{browsing ? 'Opening…' : 'Browse'}</span>
                       </button>
                     )}
                   </div>
@@ -306,7 +306,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                 />
 
                 <label className="field">
-                  <span className="field__label">instructions</span>
+                  <span className="field__label">Instructions</span>
                   <textarea
                     className="field__textarea"
                     rows={6}
@@ -315,7 +315,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                     placeholder={'e.g.\n\n# Conventions\n- typescript strict\n- prefer functions over classes'}
                   />
                   <span className="field__hint">
-                    saved to <code>{selected.path || '<path>'}/CLAUDE.md</code> between markers.
+                    Saved to <code>{selected.path || '<path>'}/CLAUDE.md</code> between markers.
                     The rest of the file is preserved.
                   </span>
                 </label>
@@ -328,15 +328,15 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
         <div className="modal__foot">
           <span className="modal__hint">
-            {dirty ? 'unsaved changes' : 'all saved'}
+            {dirty ? 'Unsaved changes' : 'All saved'}
           </span>
           <span className="modal__credit">
             SubLodeX · by Amani Andrea aka <em>The Pirate Pinperepette</em>
           </span>
           <span className="modal__spacer" />
-          <button className="header__btn" onClick={onClose}>close</button>
+          <button className="header__btn" onClick={onClose}>Close</button>
           <button className="composer__send" onClick={saveAll} disabled={loading || !dirty}>
-            {loading ? 'saving…' : 'save all'}
+            {loading ? 'Saving…' : 'Save all'}
           </button>
         </div>
       </div>
@@ -378,7 +378,7 @@ function RemoteSection({ selected, sshHosts, onChange }: {
       if (j.ok) {
         setTestState({ kind: 'ok', hostname: j.hostname, os: j.os, claudeInstalled: j.claudeInstalled });
       } else {
-        setTestState({ kind: 'fail', error: j.error ?? 'unknown error' });
+        setTestState({ kind: 'fail', error: j.error ?? 'Unknown error' });
       }
     } catch (err) {
       setTestState({ kind: 'fail', error: String(err) });
@@ -394,10 +394,10 @@ function RemoteSection({ selected, sshHosts, onChange }: {
             checked={enabled}
             onChange={(e) => onChange(e.target.checked ? { host: '' } : undefined)}
           />
-          <span>connect via SSH / SFTP</span>
+          <span>Connect via SSH / SFTP</span>
         </label>
         <span className="remote-section__hint">
-          if on, claude / files / terminal all run on the remote host
+          If on, claude / files / terminal all run on the remote host
         </span>
       </div>
 
@@ -405,14 +405,14 @@ function RemoteSection({ selected, sshHosts, onChange }: {
         <div className="remote-section__body">
           <div className="remote-grid">
             <label className="field field--small">
-              <span className="field__label">protocol</span>
+              <span className="field__label">Protocol</span>
               <select className="field__input field__input--mono" value="ssh" disabled>
                 <option value="ssh">SSH / SFTP</option>
               </select>
             </label>
 
             <label className="field field--small">
-              <span className="field__label">address</span>
+              <span className="field__label">Address</span>
               <input
                 className="field__input field__input--mono"
                 value={remote.host}
@@ -426,7 +426,7 @@ function RemoteSection({ selected, sshHosts, onChange }: {
             </label>
 
             <label className="field field--small remote-grid__port">
-              <span className="field__label">port</span>
+              <span className="field__label">Port</span>
               <input
                 className="field__input field__input--mono"
                 type="number"
@@ -437,7 +437,7 @@ function RemoteSection({ selected, sshHosts, onChange }: {
             </label>
 
             <label className="field field--small">
-              <span className="field__label">user name</span>
+              <span className="field__label">User name</span>
               <input
                 className="field__input field__input--mono"
                 value={remote.user ?? ''}
@@ -447,7 +447,7 @@ function RemoteSection({ selected, sshHosts, onChange }: {
             </label>
 
             <label className="field field--small">
-              <span className="field__label">password</span>
+              <span className="field__label">Password</span>
               <div className="remote-grid__pwd">
                 <input
                   className="field__input field__input--mono"
@@ -469,18 +469,18 @@ function RemoteSection({ selected, sshHosts, onChange }: {
                   type="button"
                   className="remote-grid__pwd-toggle"
                   onClick={() => setShowPwd((v) => !v)}
-                  title={showPwd ? 'hide' : 'show'}
+                  title={showPwd ? 'Hide' : 'Show'}
                 >
                   {showPwd ? <EyeOffIcon size={14} /> : <EyeIcon size={14} />}
                 </button>
               </div>
               {remote.password && (
-                <span className="field__hint">requires <code>sshpass</code> on the SubLodeX host</span>
+                <span className="field__hint">Requires <code>sshpass</code> on the SubLodeX host</span>
               )}
             </label>
 
             <label className="field field--small">
-              <span className="field__label">identity file</span>
+              <span className="field__label">Identity file</span>
               <input
                 className="field__input field__input--mono"
                 value={remote.identityFile ?? ''}
@@ -490,7 +490,7 @@ function RemoteSection({ selected, sshHosts, onChange }: {
             </label>
 
             <label className="field field--small remote-grid__url">
-              <span className="field__label">remote url <em style={{ color: 'var(--fg-mute)', fontStyle: 'normal', fontWeight: 400 }}>(optional)</em></span>
+              <span className="field__label">Remote url <em style={{ color: 'var(--fg-mute)', fontStyle: 'normal', fontWeight: 400 }}>(optional)</em></span>
               <input
                 className="field__input field__input--mono"
                 value={remote.remoteUrl ?? ''}
@@ -500,13 +500,13 @@ function RemoteSection({ selected, sshHosts, onChange }: {
             </label>
 
             <label className="field field--small">
-              <span className="field__label">shell type</span>
+              <span className="field__label">Shell type</span>
               <select
                 className="field__input field__input--mono"
                 value={remote.shellType ?? 'auto'}
                 onChange={(e) => update({ shellType: e.target.value as RemoteConfig['shellType'] })}
               >
-                <option value="auto">automatic</option>
+                <option value="auto">Automatic</option>
                 <option value="bash">bash</option>
                 <option value="zsh">zsh</option>
                 <option value="sh">sh</option>
@@ -521,8 +521,8 @@ function RemoteSection({ selected, sshHosts, onChange }: {
                 onChange={(e) => update({ agentForwarding: e.target.checked })}
               />
               <div>
-                <div style={{ fontSize: 13, fontWeight: 500 }}>allow agent forwarding</div>
-                <div style={{ fontSize: 11, color: 'var(--fg-mute)' }}>uses keys stored in your local ssh-agent</div>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>Allow agent forwarding</div>
+                <div style={{ fontSize: 11, color: 'var(--fg-mute)' }}>Uses keys stored in your local ssh-agent</div>
               </div>
             </label>
           </div>
@@ -534,17 +534,17 @@ function RemoteSection({ selected, sshHosts, onChange }: {
               onClick={test}
               disabled={testState.kind === 'testing' || !remote.host?.trim()}
             >
-              {testState.kind === 'testing' ? '⏳ testing…' : '⚡ test connection'}
+              {testState.kind === 'testing' ? '⏳ Testing…' : '⚡ Test connection'}
             </button>
             {testState.kind === 'ok' && (
               <div className="remote-test__result remote-test__result--ok">
                 <span className="remote-test__icon">✓</span>
                 <div>
-                  <div><b>connected</b> · {testState.hostname} ({testState.os})</div>
+                  <div><b>Connected</b> · {testState.hostname} ({testState.os})</div>
                   <div className="remote-test__detail">
                     {testState.claudeInstalled
-                      ? 'claude CLI: ✓ installed'
-                      : 'claude CLI: ✗ not found — install it on the remote for claude features'}
+                      ? 'Claude CLI: ✓ installed'
+                      : 'Claude CLI: ✗ not found — install it on the remote for claude features'}
                   </div>
                 </div>
               </div>
@@ -553,7 +553,7 @@ function RemoteSection({ selected, sshHosts, onChange }: {
               <div className="remote-test__result remote-test__result--fail">
                 <span className="remote-test__icon">✗</span>
                 <div>
-                  <div><b>connection failed</b></div>
+                  <div><b>Connection failed</b></div>
                   <pre className="remote-test__error">{testState.error}</pre>
                 </div>
               </div>
@@ -566,10 +566,10 @@ function RemoteSection({ selected, sshHosts, onChange }: {
 }
 
 const SPEED_OPTIONS: { id: StreamSpeed; label: string; hint: string }[] = [
-  { id: 'instant', label: 'instant', hint: 'no animation (default)' },
-  { id: 'fast',    label: 'fast',    hint: '~330 char/s' },
-  { id: 'normal',  label: 'normal',  hint: '~100 char/s' },
-  { id: 'slow',    label: 'slow',    hint: '~33 char/s — typewriter' },
+  { id: 'instant', label: 'Instant', hint: 'No animation (default)' },
+  { id: 'fast',    label: 'Fast',    hint: '~330 char/s' },
+  { id: 'normal',  label: 'Normal',  hint: '~100 char/s' },
+  { id: 'slow',    label: 'Slow',    hint: '~33 char/s — typewriter' },
 ];
 
 function StreamSpeedRow() {
@@ -578,9 +578,9 @@ function StreamSpeedRow() {
   return (
     <div className="settings-pref-row">
       <div className="settings-pref-row__label">
-        <div className="settings-pref-row__title">live file write speed</div>
+        <div className="settings-pref-row__title">Live file write speed</div>
         <div className="settings-pref-row__hint">
-          how fast claude's writes appear in the editor while streaming
+          How fast claude's writes appear in the editor while streaming
         </div>
       </div>
       <div className="settings-pref-row__choices">
@@ -601,7 +601,7 @@ function StreamSpeedRow() {
 }
 
 function shortPath(p: string): string {
-  if (!p) return '(no path)';
+  if (!p) return '(No path)';
   const home = '/Users/';
   if (p.startsWith(home)) {
     const parts = p.slice(home.length).split('/');

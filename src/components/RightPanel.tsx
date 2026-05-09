@@ -18,9 +18,9 @@ export function RightPanel() {
   if (!mode) return null;
 
   const titles: Record<NonNullable<typeof mode>, string> = {
-    files: 'files',
-    git: 'git',
-    editor: 'open files',
+    files: 'Files',
+    git: 'Git',
+    editor: 'Open files',
   };
 
   return (
@@ -30,7 +30,7 @@ export function RightPanel() {
         <button
           className="right-panel__close"
           onClick={() => setMode(null)}
-          title="close panel"
+          title="Close panel"
         >
           ✕
         </button>

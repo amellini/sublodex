@@ -4,13 +4,13 @@ import type { PlanBilling, PlanUsage, WindowUsage } from '../lib/types';
 type Props = { data: PlanUsage };
 
 const WINDOW_META: Record<string, { label: string; sub?: string; tone?: 'all' | 'opus' | 'sonnet' | 'haiku' }> = {
-  '5h':         { label: 'current session',   sub: '5h rolling window' },
-  '5h_opus':    { label: 'session · opus',    sub: '5h opus-only',          tone: 'opus' },
-  '5h_sonnet':  { label: 'session · sonnet',  sub: '5h sonnet-only',        tone: 'sonnet' },
-  '7d':         { label: 'weekly · all models', sub: '7d rolling window' },
-  '7d_opus':    { label: 'weekly · opus',     sub: '7d opus-only',          tone: 'opus' },
-  '7d_sonnet':  { label: 'weekly · sonnet',   sub: '7d sonnet-only',        tone: 'sonnet' },
-  '7d_haiku':   { label: 'weekly · haiku',    sub: '7d haiku-only',         tone: 'haiku' },
+  '5h':         { label: 'Current session',   sub: '5h rolling window' },
+  '5h_opus':    { label: 'Session · opus',    sub: '5h opus-only',          tone: 'opus' },
+  '5h_sonnet':  { label: 'Session · sonnet',  sub: '5h sonnet-only',        tone: 'sonnet' },
+  '7d':         { label: 'Weekly · all models', sub: '7d rolling window' },
+  '7d_opus':    { label: 'Weekly · opus',     sub: '7d opus-only',          tone: 'opus' },
+  '7d_sonnet':  { label: 'Weekly · sonnet',   sub: '7d sonnet-only',        tone: 'sonnet' },
+  '7d_haiku':   { label: 'Weekly · haiku',    sub: '7d haiku-only',         tone: 'haiku' },
 };
 
 const ORDER = ['5h', '5h_opus', '5h_sonnet', '7d', '7d_opus', '7d_sonnet', '7d_haiku'];
@@ -27,18 +27,18 @@ export function UsageCard({ data }: Props) {
     <div className="usage">
       <div className="usage__head">
         <div className="usage__title">
-          <span className="usage__title-main">plan usage</span>
+          <span className="usage__title-main">Plan usage</span>
           <span className="usage__tier">{tier}</span>
         </div>
         <StatusPill status={data.status} type={data.rateLimitType} />
       </div>
 
       {allKeys.length === 0 ? (
-        <div className="usage__empty">no rate-limit data returned</div>
+        <div className="usage__empty">No rate-limit data returned</div>
       ) : (
         <div className="usage__rows">
           {allKeys.map((key) => {
-            const meta = WINDOW_META[key] ?? { label: key, sub: 'custom window' };
+            const meta = WINDOW_META[key] ?? { label: key, sub: 'Custom window' };
             const w = data.windows[key];
             return <UsageRow key={key} meta={meta} usage={w} />;
           })}
@@ -59,8 +59,8 @@ export function UsageCard({ data }: Props) {
 
       {!data.weeklyBreakdown && !data.dailyRoutines && !data.billing && (
         <div className="usage__missing">
-          <span>more details (per-model breakdown, daily routines, monthly cap) live in the dashboard</span>
-          <a href="https://claude.ai/settings/usage" target="_blank" rel="noreferrer">open dashboard ↗</a>
+          <span>More details (per-model breakdown, daily routines, monthly cap) live in the dashboard</span>
+          <a href="https://claude.ai/settings/usage" target="_blank" rel="noreferrer">Open dashboard ↗</a>
         </div>
       )}
 
@@ -68,10 +68,10 @@ export function UsageCard({ data }: Props) {
 
       <div className="usage__foot">
         {data.fallbackAvailable && (
-          <span className="usage__chip">fallback available</span>
+          <span className="usage__chip">Fallback available</span>
         )}
         <span className="usage__spacer" />
-        <span className="usage__time">updated {fetched.toLocaleTimeString()}</span>
+        <span className="usage__time">Updated {fetched.toLocaleTimeString()}</span>
       </div>
     </div>
   );
@@ -92,7 +92,7 @@ function UsageRow({ meta, usage }: { meta: { label: string; sub?: string; tone?:
         </div>
         <div className="usage__row-meta">
           <span className={`usage__pct usage__pct--${used}`}>{pctStr}</span>
-          <span className="usage__reset">resets in {relTime(usage.resetsAt)}</span>
+          <span className="usage__reset">Resets in {relTime(usage.resetsAt)}</span>
         </div>
       </div>
       <div className="usage__bar">
@@ -123,10 +123,10 @@ function Overage({ overage }: { overage: OverageData }) {
   if (isUserOff) {
     return (
       <div className="usage__overage usage__overage--off">
-        <span className="usage__overage-label">extra usage</span>
-        <span className="usage__overage-state usage__overage-state--off">off</span>
+        <span className="usage__overage-label">Extra usage</span>
+        <span className="usage__overage-state usage__overage-state--off">Off</span>
         <span className="usage__overage-hint">
-          enable in <a href="https://claude.ai/settings/usage" target="_blank" rel="noreferrer">claude.ai → settings → usage</a> to keep working when you hit a limit
+          Enable in <a href="https://claude.ai/settings/usage" target="_blank" rel="noreferrer">Claude.ai → settings → usage</a> to keep working when you hit a limit
         </span>
       </div>
     );
@@ -136,8 +136,8 @@ function Overage({ overage }: { overage: OverageData }) {
   if (overage.status === 'rejected') {
     return (
       <div className="usage__overage usage__overage--blocked">
-        <span className="usage__overage-label">extra usage</span>
-        <span className="usage__overage-state usage__overage-state--blocked">blocked</span>
+        <span className="usage__overage-label">Extra usage</span>
+        <span className="usage__overage-state usage__overage-state--blocked">Blocked</span>
         {overage.disabledReason && (
           <span className="usage__overage-reason">{prettyReason(overage.disabledReason)}</span>
         )}
@@ -147,12 +147,12 @@ function Overage({ overage }: { overage: OverageData }) {
 
   return (
     <div className={`usage__overage usage__overage--${isAvailable ? 'on' : 'idle'}`}>
-      <span className="usage__overage-label">extra usage</span>
+      <span className="usage__overage-label">Extra usage</span>
       <span className={`usage__overage-state usage__overage-state--${isAvailable ? 'on' : 'idle'}`}>
-        {isAvailable ? 'on' : overage.status}
+        {isAvailable ? 'On' : overage.status}
       </span>
       {overage.resetsAt && (
-        <span className="usage__overage-reset">resets in {relTime(overage.resetsAt)}</span>
+        <span className="usage__overage-reset">Resets in {relTime(overage.resetsAt)}</span>
       )}
     </div>
   );
@@ -167,14 +167,14 @@ function WeeklyBreakdown({ items }: { items: NonNullable<PlanUsage['weeklyBreakd
             <div className="usage__row-label">
               <span className="usage__dot usage__dot--default" />
               <span className="usage__label">{item.name}</span>
-              <span className="usage__sub">weekly</span>
+              <span className="usage__sub">Weekly</span>
             </div>
             <div className="usage__row-meta">
               <span className={`usage__pct usage__pct--${item.utilization >= 0.9 ? 'danger' : item.utilization >= 0.7 ? 'warn' : 'ok'}`}>
                 {Math.round(item.utilization * 100)}%
               </span>
               {item.resetsAt && (
-                <span className="usage__reset">resets in {relTime(item.resetsAt)}</span>
+                <span className="usage__reset">Resets in {relTime(item.resetsAt)}</span>
               )}
             </div>
           </div>
@@ -197,8 +197,8 @@ function DailyRoutines({ data }: { data: { used: number; total: number } }) {
       <div className="usage__row-head">
         <div className="usage__row-label">
           <span className="usage__dot usage__dot--haiku" />
-          <span className="usage__label">daily routines</span>
-          <span className="usage__sub">included</span>
+          <span className="usage__label">Daily routines</span>
+          <span className="usage__sub">Included</span>
         </div>
         <div className="usage__row-meta">
           <span className="usage__pct usage__pct--ok">{data.used} / {data.total}</span>
@@ -217,7 +217,7 @@ function DebugBlock({ entries }: { entries: NonNullable<PlanUsage['debug']> }) {
   return (
     <div className="usage__debug">
       <button className="usage__debug-toggle" onClick={() => setOpen((v) => !v)}>
-        debug · {ok}/{entries.length} endpoints responded {open ? '−' : '+'}
+        Debug · {ok}/{entries.length} endpoints responded {open ? '−' : '+'}
       </button>
       {open && (
         <div className="usage__debug-list">
@@ -249,7 +249,7 @@ function BillingBlock({ billing }: { billing: PlanBilling }) {
   return (
     <div className="usage__billing">
       <div className="usage__billing-row">
-        <span className="usage__billing-label">spent this month</span>
+        <span className="usage__billing-label">Spent this month</span>
         <span className="usage__billing-val">
           <strong>{fmt(billing.spent)}</strong>
           {billing.monthlyCap !== undefined && (
@@ -267,14 +267,14 @@ function BillingBlock({ billing }: { billing: PlanBilling }) {
       )}
       {billing.balance !== undefined && (
         <div className="usage__billing-row">
-          <span className="usage__billing-label">balance</span>
+          <span className="usage__billing-label">Balance</span>
           <span className="usage__billing-val">{fmt(billing.balance)}</span>
         </div>
       )}
       {billing.autoRecharge && (
         <div className="usage__billing-row">
-          <span className="usage__billing-label">auto-recharge</span>
-          <span className="usage__billing-val usage__billing-val--ok">on</span>
+          <span className="usage__billing-label">Auto-recharge</span>
+          <span className="usage__billing-val usage__billing-val--ok">On</span>
         </div>
       )}
     </div>
@@ -295,7 +295,7 @@ function StatusPill({ status, type }: { status: string; type?: string }) {
 
 export function relTime(unixSeconds: number): string {
   const ms = unixSeconds * 1000 - Date.now();
-  if (ms <= 0) return 'now';
+  if (ms <= 0) return 'Now';
   const s = Math.floor(ms / 1000);
   const d = Math.floor(s / 86400);
   const h = Math.floor((s % 86400) / 3600);

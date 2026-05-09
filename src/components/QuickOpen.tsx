@@ -110,7 +110,7 @@ export function QuickOpen() {
         <input
           ref={inputRef}
           className="quick-open__input"
-          placeholder="search files…  (esc to close)"
+          placeholder="Search files…  (esc to close)"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onKey}
@@ -119,7 +119,7 @@ export function QuickOpen() {
         />
         <div className="quick-open__list" ref={listRef}>
           {matches.length === 0 && (
-            <div className="quick-open__empty">no files match</div>
+            <div className="quick-open__empty">No files match</div>
           )}
           {matches.map((p, i) => (
             <button
@@ -135,7 +135,7 @@ export function QuickOpen() {
           ))}
         </div>
         <div className="quick-open__hint">
-          ↑↓ navigate · ↵ open · esc close
+          ↑↓ Navigate · ↵ Open · esc close
         </div>
       </div>
     </div>

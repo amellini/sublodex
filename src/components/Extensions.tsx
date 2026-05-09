@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 /* tipi mirror del backend `readPluginsState` */
 
@@ -99,6 +99,7 @@ export function Extensions({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('plugins');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [query, setQuery] = useState('');
 
   const refresh = async () => {
     setLoading(true);
@@ -124,24 +125,33 @@ export function Extensions({ onClose }: { onClose: () => void }) {
       return next;
     });
 
-  const counts = data
+  // Filtro full-text: applicato a tutte le liste insieme. I count nei tab
+  // riflettono i match (così l'utente vede subito in quale tab c'è qualcosa).
+  // Quando la query è vuota, `filtered === data` per reference → niente
+  // re-render inutili a valle.
+  const filtered = useMemo(() => applySearch(data, query), [data, query]);
+
+  const counts = filtered
     ? {
-        plugins: data.plugins.length,
-        extensions: data.extensionPackages.length,
-        skills: data.skills.length,
-        mcp: data.mcpServers.length,
-        hooks: data.hooks.length,
-        marketplaces: data.marketplaces.length,
+        plugins: filtered.plugins.length,
+        extensions: filtered.extensionPackages.length,
+        skills: filtered.skills.length,
+        mcp: filtered.mcpServers.length,
+        hooks: filtered.hooks.length,
+        marketplaces: filtered.marketplaces.length,
       }
     : { plugins: 0, extensions: 0, skills: 0, mcp: 0, hooks: 0, marketplaces: 0 };
 
   const enabledCount = data?.plugins.filter((p) => p.enabled).length ?? 0;
+  const totalMatches = filtered
+    ? counts.plugins + counts.extensions + counts.skills + counts.mcp + counts.hooks + counts.marketplaces
+    : 0;
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal modal--extensions" onClick={(e) => e.stopPropagation()}>
         <div className="modal__head">
-          <h2 className="modal__title">extensions</h2>
+          <h2 className="modal__title">Extensions</h2>
           <span className="ext__sub">
             {enabledCount}/{counts.plugins} plugins enabled · {counts.skills} skills · {counts.mcp} MCP · {counts.hooks} hooks
           </span>
@@ -169,45 +179,77 @@ export function Extensions({ onClose }: { onClose: () => void }) {
             <button
               className="ext__tab ext__tab--action"
               onClick={refresh}
-              title="refresh"
+              title="Refresh"
               disabled={loading}
             >
-              <span className="ext__tab-label">{loading ? 'refreshing…' : 'refresh'}</span>
+              <span className="ext__tab-label">{loading ? 'Refreshing…' : 'Refresh'}</span>
               <span className="ext__tab-count">⟳</span>
             </button>
           </nav>
 
           <div className="ext__body">
-          {loading && <div className="ext__loading">loading…</div>}
+          {!loading && !error && data && (
+            <div className="ext__search">
+              <span className="ext__search-icon" aria-hidden="true">⌕</span>
+              <input
+                className="ext__search-input"
+                type="text"
+                placeholder="Search across all extensions, skills, hooks, MCP…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                autoFocus
+              />
+              {query && (
+                <button
+                  className="ext__search-clear"
+                  onClick={() => setQuery('')}
+                  title="Clear search"
+                  type="button"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          )}
+          {loading && <div className="ext__loading">Loading…</div>}
           {error && <div className="ext__error">{error}</div>}
 
-          {!loading && !error && data && tab === 'plugins' && (
-            <PluginsList data={data} expanded={expanded} onToggle={toggleExpanded} />
+          {!loading && !error && filtered && query.trim() && totalMatches === 0 && (
+            <div className="ext__empty">
+              <div className="ext__empty-title">No matches for "{query}"</div>
+              <div className="ext__empty-hint">
+                Try a different keyword, or clear the search to see all extensions.
+              </div>
+            </div>
           )}
-          {!loading && !error && data && tab === 'extensions' && (
-            <ExtensionPackagesList data={data} expanded={expanded} onToggle={toggleExpanded} />
+
+          {!loading && !error && filtered && tab === 'plugins' && (
+            <PluginsList data={filtered} expanded={expanded} onToggle={toggleExpanded} />
           )}
-          {!loading && !error && data && tab === 'skills' && (
-            <SkillsList data={data} expanded={expanded} onToggle={toggleExpanded} />
+          {!loading && !error && filtered && tab === 'extensions' && (
+            <ExtensionPackagesList data={filtered} expanded={expanded} onToggle={toggleExpanded} />
           )}
-          {!loading && !error && data && tab === 'mcp' && (
-            <McpList data={data} />
+          {!loading && !error && filtered && tab === 'skills' && (
+            <SkillsList data={filtered} expanded={expanded} onToggle={toggleExpanded} />
           )}
-          {!loading && !error && data && tab === 'hooks' && (
-            <HooksList data={data} />
+          {!loading && !error && filtered && tab === 'mcp' && (
+            <McpList data={filtered} />
           )}
-          {!loading && !error && data && tab === 'marketplaces' && (
-            <MarketplacesList data={data} />
+          {!loading && !error && filtered && tab === 'hooks' && (
+            <HooksList data={filtered} />
+          )}
+          {!loading && !error && filtered && tab === 'marketplaces' && (
+            <MarketplacesList data={filtered} />
           )}
           </div>
         </div>
 
         <div className="modal__foot">
           <span className="modal__hint">
-            read-only — install / enable via <code>claude plugin</code> CLI
+            Read-only — install / enable via <code>claude plugin</code> CLI
           </span>
           <span className="modal__spacer" />
-          <button className="header__btn" onClick={onClose}>close</button>
+          <button className="header__btn" onClick={onClose}>Close</button>
         </div>
       </div>
     </div>
@@ -224,9 +266,9 @@ function PluginsList({ data, expanded, onToggle }: {
   if (data.plugins.length === 0) {
     return (
       <div className="ext__empty">
-        <div className="ext__empty-title">no plugins installed</div>
+        <div className="ext__empty-title">No plugins installed</div>
         <div className="ext__empty-hint">
-          install one with <code>claude plugin install &lt;name&gt;</code>
+          Install one with <code>claude plugin install &lt;name&gt;</code>
         </div>
       </div>
     );
@@ -274,30 +316,30 @@ function PluginCard({ plugin, expanded, onToggle }: {
       )}
 
       <div className="ext-card__exposes">
-        {exposes.commands > 0 && <Capability icon="⌘" label="commands" n={exposes.commands} />}
-        {exposes.agents > 0 && <Capability icon="◉" label="agents" n={exposes.agents} />}
-        {exposes.skills > 0 && <Capability icon="✦" label="skills" n={exposes.skills} />}
-        {exposes.hooks > 0 && <Capability icon="⚡" label="hooks" n={exposes.hooks} />}
+        {exposes.commands > 0 && <Capability icon="⌘" label="Commands" n={exposes.commands} />}
+        {exposes.agents > 0 && <Capability icon="◉" label="Agents" n={exposes.agents} />}
+        {exposes.skills > 0 && <Capability icon="✦" label="Skills" n={exposes.skills} />}
+        {exposes.hooks > 0 && <Capability icon="⚡" label="Hooks" n={exposes.hooks} />}
         {exposes.mcpServers > 0 && <Capability icon="◆" label="MCP" n={exposes.mcpServers} />}
         {exposes.lspServers > 0 && <Capability icon="⚙" label="LSP" n={exposes.lspServers} />}
-        {totalExposes === 0 && <span className="ext-card__nothing">no manifest data</span>}
+        {totalExposes === 0 && <span className="ext-card__nothing">No manifest data</span>}
       </div>
 
       {expanded && (
         <div className="ext-card__details">
-          <DetailRow label="path" value={plugin.installPath} mono />
+          <DetailRow label="Path" value={plugin.installPath} mono />
           {plugin.installedAt && (
-            <DetailRow label="installed" value={fmtDate(plugin.installedAt)} />
+            <DetailRow label="Installed" value={fmtDate(plugin.installedAt)} />
           )}
           {plugin.lastUpdated && plugin.lastUpdated !== plugin.installedAt && (
-            <DetailRow label="updated" value={fmtDate(plugin.lastUpdated)} />
+            <DetailRow label="Updated" value={fmtDate(plugin.lastUpdated)} />
           )}
           {plugin.gitCommitSha && (
-            <DetailRow label="commit" value={plugin.gitCommitSha.slice(0, 12)} mono />
+            <DetailRow label="Commit" value={plugin.gitCommitSha.slice(0, 12)} mono />
           )}
           {plugin.manifest?.author && (
             <DetailRow
-              label="author"
+              label="Author"
               value={typeof plugin.manifest.author === 'string'
                 ? plugin.manifest.author
                 : plugin.manifest.author.name ?? '?'}
@@ -305,7 +347,7 @@ function PluginCard({ plugin, expanded, onToggle }: {
           )}
           {plugin.manifest?.repository && (
             <DetailRow
-              label="repository"
+              label="Repository"
               value={typeof plugin.manifest.repository === 'string'
                 ? plugin.manifest.repository
                 : plugin.manifest.repository.url ?? '?'}
@@ -313,7 +355,7 @@ function PluginCard({ plugin, expanded, onToggle }: {
             />
           )}
           {plugin.manifest?.license && (
-            <DetailRow label="license" value={plugin.manifest.license} />
+            <DetailRow label="License" value={plugin.manifest.license} />
           )}
         </div>
       )}
@@ -352,60 +394,86 @@ function SkillsList({ data, expanded, onToggle }: {
   if (data.skills.length === 0) {
     return (
       <div className="ext__empty">
-        <div className="ext__empty-title">no skills available</div>
+        <div className="ext__empty-title">No skills available</div>
         <div className="ext__empty-hint">
-          skills come from installed plugins (e.g. <code>mempalace</code>,
+          Skills come from installed plugins (e.g. <code>mempalace</code>,
           <code>{' '}anthropic-skills</code>) or from <code>~/.claude/skills/</code> /
           <code>{' '}.claude/skills/</code>
         </div>
       </div>
     );
   }
+
+  // Raggruppiamo per "origine": pluginId per skill di plugin, altrimenti
+  // lo scope ('user' | 'project'). Una skill appare una sola volta, sotto
+  // l'unica intestazione del suo provider — niente più ripetizione del
+  // pill `@pluginId` su ogni card.
+  const groups = new Map<string, SkillEntry[]>();
+  for (const s of data.skills) {
+    const key = s.scope === 'plugin' ? s.pluginId : s.scope;
+    const arr = groups.get(key) ?? [];
+    arr.push(s);
+    groups.set(key, arr);
+  }
+  // Ordine: user-level prima, poi project-level, poi plugins in ordine alfabetico.
+  // Coerente col senso "scope crescente di specificità → granularità di terze parti".
+  const ordered = [...groups.entries()].sort(([a], [b]) => {
+    const rank = (k: string) => k === 'user' ? 0 : k === 'project' ? 1 : 2;
+    const ra = rank(a), rb = rank(b);
+    if (ra !== rb) return ra - rb;
+    return a.localeCompare(b);
+  });
+
+  const groupLabel = (key: string): string => {
+    if (key === 'user') return 'User-level skills';
+    if (key === 'project') return 'Project-level skills';
+    return key;
+  };
+
   return (
-    <div className="ext__grid">
-      {data.skills.map((s) => (
-        <SkillCard
-          key={s.id}
-          skill={s}
-          expanded={expanded.has(`skill::${s.id}`)}
-          onToggle={() => onToggle(`skill::${s.id}`)}
-        />
+    <div className="ext__list">
+      {ordered.map(([key, skills]) => (
+        <div className="ext-hook-group" key={key}>
+          <div className="ext-hook-group__head">
+            <span className="ext-hook-group__event">{groupLabel(key)}</span>
+            <span className="ext-hook-group__count">{skills.length}</span>
+          </div>
+          {skills.map((s) => (
+            <SkillRow
+              key={s.id}
+              skill={s}
+              expanded={expanded.has(`skill::${s.id}`)}
+              onToggle={() => onToggle(`skill::${s.id}`)}
+            />
+          ))}
+        </div>
       ))}
     </div>
   );
 }
 
-function SkillCard({ skill, expanded, onToggle }: {
+/** Riga compatta per skill: nome + descrizione inline, click → expand
+ *  per id/path. Niente bordo/card: il raggruppamento per origine fornisce
+ *  già il contenitore visivo. */
+function SkillRow({ skill, expanded, onToggle }: {
   skill: SkillEntry;
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const cls = `ext-card ext-card--skill ${skill.activeForProject ? 'ext-card--enabled ext-card--project-active' : 'ext-card--disabled'}`;
-  const scopeChip = skill.scope === 'plugin' ? skill.pluginId : skill.scope;
   return (
-    <div className={cls}>
-      <button className="ext-card__head" onClick={onToggle}>
-        <span className="ext-card__icon">✦</span>
-        <div className="ext-card__title">
-          <span className="ext-card__name">{skill.name}</span>
-          <span className="ext-card__market">
-            {skill.scope === 'plugin' ? `@${skill.pluginId}` : `${skill.scope}-level`}
-          </span>
-        </div>
-        <span className={`ext-chip ext-chip--${skill.scope === 'project' ? 'project' : 'user'}`}>
-          {scopeChip}
-        </span>
-        <span className="ext-card__chev">{expanded ? '▴' : '▾'}</span>
+    <div className={`ext-skill-row ${skill.activeForProject ? 'ext-skill-row--active' : ''}`}>
+      <button className="ext-skill-row__head" onClick={onToggle}>
+        <span className="ext-skill-row__icon">✦</span>
+        <span className="ext-skill-row__name">{skill.name}</span>
+        {skill.description && (
+          <span className="ext-skill-row__desc">{skill.description}</span>
+        )}
+        <span className="ext-skill-row__chev">{expanded ? '▴' : '▾'}</span>
       </button>
-
-      {skill.description && (
-        <div className="ext-card__desc">{skill.description}</div>
-      )}
-
       {expanded && (
-        <div className="ext-card__details">
-          <DetailRow label="id" value={skill.id} mono />
-          <DetailRow label="path" value={skill.skillPath} mono />
+        <div className="ext-skill-row__details">
+          <DetailRow label="Id" value={skill.id} mono />
+          <DetailRow label="Path" value={skill.skillPath} mono />
         </div>
       )}
     </div>
@@ -423,9 +491,9 @@ function ExtensionPackagesList({ data, expanded, onToggle }: {
   if (pkgs.length === 0) {
     return (
       <div className="ext__empty">
-        <div className="ext__empty-title">no extension packages detected</div>
+        <div className="ext__empty-title">No extension packages detected</div>
         <div className="ext__empty-hint">
-          npm packages installed globally that hook into Claude Code (like
+          Npm packages installed globally that hook into Claude Code (like
           <code>{' '}@ccplug/claude-reforge</code>) appear here automatically.
         </div>
       </div>
@@ -457,24 +525,24 @@ function ExtensionPackageCard({ pkg, expanded, onToggle }: {
         <span className="ext-card__icon">⚡</span>
         <div className="ext-card__title">
           <span className="ext-card__name">{pkg.name}</span>
-          <span className="ext-card__market">npm hook extension</span>
+          <span className="ext-card__market">Npm hook extension</span>
         </div>
         <span className={`ext-chip ext-chip--${pkg.scope}`}>{pkg.scope}</span>
         <span className="ext-card__chev">{expanded ? '▴' : '▾'}</span>
       </button>
 
       <div className="ext-card__exposes">
-        <Capability icon="⚡" label="hooks" n={pkg.hooks.length} />
-        <Capability icon="◐" label="events" n={events.size} />
+        <Capability icon="⚡" label="Hooks" n={pkg.hooks.length} />
+        <Capability icon="◐" label="Events" n={events.size} />
       </div>
 
       {expanded && (
         <div className="ext-card__details">
           {pkg.packageRoot && (
-            <DetailRow label="path" value={pkg.packageRoot} mono />
+            <DetailRow label="Path" value={pkg.packageRoot} mono />
           )}
           <div className="ext-detail">
-            <span className="ext-detail__label">events</span>
+            <span className="ext-detail__label">Events</span>
             <div className="ext-detail__value">
               <div className="ext-pkg__events">
                 {[...events].map((e) => (
@@ -484,7 +552,7 @@ function ExtensionPackageCard({ pkg, expanded, onToggle }: {
             </div>
           </div>
           <div className="ext-detail">
-            <span className="ext-detail__label">hooks</span>
+            <span className="ext-detail__label">Hooks</span>
             <div className="ext-detail__value">
               <div className="ext-pkg__hooks">
                 {pkg.hooks.map((h, i) => (
@@ -509,9 +577,9 @@ function McpList({ data }: { data: PluginsState }) {
   if (data.mcpServers.length === 0) {
     return (
       <div className="ext__empty">
-        <div className="ext__empty-title">no MCP servers configured</div>
+        <div className="ext__empty-title">No MCP servers configured</div>
         <div className="ext__empty-hint">
-          add servers in <code>~/.claude/settings.json</code> (user) or
+          Add servers in <code>~/.claude/settings.json</code> (user) or
           <code>{' '}.mcp.json</code> (project root)
         </div>
       </div>
@@ -526,16 +594,16 @@ function McpList({ data }: { data: PluginsState }) {
             <span className="ext-mcp__name">{s.name}</span>
             <span className={`ext-chip ext-chip--${s.scope}`}>{s.scope}</span>
           </div>
-          {s.url && <DetailRow label="url" value={s.url} mono />}
+          {s.url && <DetailRow label="Url" value={s.url} mono />}
           {s.command && (
             <DetailRow
-              label="command"
+              label="Command"
               value={`${s.command}${s.args?.length ? ' ' + s.args.join(' ') : ''}`}
               mono
             />
           )}
           {s.env && Object.keys(s.env).length > 0 && (
-            <DetailRow label="env" value={Object.keys(s.env).join(', ')} mono />
+            <DetailRow label="Env" value={Object.keys(s.env).join(', ')} mono />
           )}
         </div>
       ))}
@@ -549,9 +617,9 @@ function HooksList({ data }: { data: PluginsState }) {
   if (data.hooks.length === 0) {
     return (
       <div className="ext__empty">
-        <div className="ext__empty-title">no hooks configured</div>
+        <div className="ext__empty-title">No hooks configured</div>
         <div className="ext__empty-hint">
-          add them under <code>hooks</code> in <code>~/.claude/settings.json</code> or
+          Add them under <code>hooks</code> in <code>~/.claude/settings.json</code> or
           <code>{' '}.claude/settings.json</code>
         </div>
       </div>
@@ -594,7 +662,7 @@ function MarketplacesList({ data }: { data: PluginsState }) {
   if (data.marketplaces.length === 0) {
     return (
       <div className="ext__empty">
-        <div className="ext__empty-title">no marketplaces registered</div>
+        <div className="ext__empty-title">No marketplaces registered</div>
       </div>
     );
   }
@@ -612,18 +680,65 @@ function MarketplacesList({ data }: { data: PluginsState }) {
               <span className="ext-market__icon">◇</span>
               <span className="ext-market__name">{m.name}</span>
             </div>
-            <DetailRow label="source" value={sourceLabel} mono />
+            <DetailRow label="Source" value={sourceLabel} mono />
             {m.installLocation && (
-              <DetailRow label="path" value={m.installLocation} mono />
+              <DetailRow label="Path" value={m.installLocation} mono />
             )}
             {m.lastUpdated && (
-              <DetailRow label="updated" value={fmtDate(m.lastUpdated)} />
+              <DetailRow label="Updated" value={fmtDate(m.lastUpdated)} />
             )}
           </div>
         );
       })}
     </div>
   );
+}
+
+/** Filtro full-text case-insensitive su tutte le entità. Restituisce
+ *  l'oggetto originale (per reference) se la query è vuota — così i consumer
+ *  con `useMemo` non re-renderizzano. Per ogni tipo flatto i campi rilevanti
+ *  in un array di stringhe e cerco la sottostringa. */
+function applySearch(data: PluginsState | null, q: string): PluginsState | null {
+  if (!data) return null;
+  const needle = q.trim().toLowerCase();
+  if (!needle) return data;
+
+  const has = (...fields: Array<string | undefined | null>): boolean =>
+    fields.some((f) => typeof f === 'string' && f.toLowerCase().includes(needle));
+
+  return {
+    ...data,
+    plugins: data.plugins.filter((p) =>
+      has(
+        p.id, p.name, p.description, p.marketplace, p.scope, p.version,
+        typeof p.manifest?.author === 'string' ? p.manifest.author : p.manifest?.author?.name,
+        typeof p.manifest?.repository === 'string' ? p.manifest.repository : p.manifest?.repository?.url,
+        p.manifest?.license,
+      ),
+    ),
+    extensionPackages: data.extensionPackages.filter((p) =>
+      has(p.name, p.scope, p.packageRoot, ...p.hooks.map((h) => h.event), ...p.hooks.map((h) => h.matcher)),
+    ),
+    skills: data.skills.filter((s) =>
+      has(s.id, s.name, s.description, s.pluginId, s.scope, s.skillPath),
+    ),
+    mcpServers: data.mcpServers.filter((s) =>
+      has(
+        s.name, s.scope, s.command, s.url,
+        ...(s.args ?? []),
+        ...Object.keys(s.env ?? {}),
+        ...Object.values(s.env ?? {}),
+      ),
+    ),
+    hooks: data.hooks.filter((h) => has(h.event, h.matcher, h.command, h.scope, h.type)),
+    marketplaces: data.marketplaces.filter((m) =>
+      has(
+        m.name, m.installLocation,
+        typeof m.source.source === 'string' ? m.source.source : undefined,
+        m.source.repo, m.source.url,
+      ),
+    ),
+  };
 }
 
 function fmtDate(iso: string): string {

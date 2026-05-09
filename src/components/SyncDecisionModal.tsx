@@ -57,7 +57,7 @@ export function SyncDecisionModal() {
         aria-modal="true"
       >
         <div className="modal__head">
-          <h3 className="modal__title">sync delta specs for "{pending.current}"?</h3>
+          <h3 className="modal__title">Sync delta specs for "{pending.current}"?</h3>
         </div>
         <div className="modal__body">
           <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5 }}>
@@ -75,16 +75,16 @@ export function SyncDecisionModal() {
           </p>
         </div>
         <div className="modal__foot">
-          <button className="header__btn" onClick={() => reply('no')} title="skip sync (esc)">
-            no, skip
+          <button className="header__btn" onClick={() => reply('no')} title="Skip sync (esc)">
+            No, skip
           </button>
           <button
             ref={yesRef}
             className="composer__send"
             onClick={() => reply('yes')}
-            title="sync delta specs then archive (enter)"
+            title="Sync delta specs then archive (enter)"
           >
-            yes, sync
+            Yes, sync
           </button>
         </div>
       </div>

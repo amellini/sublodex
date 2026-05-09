@@ -121,27 +121,27 @@ export function SpecEditorPane({ filePath }: { filePath: string }) {
       <div className="spec-editor__head">
         <span className="spec-editor__name">{fileName}</span>
         <span className="spec-editor__path" title={filePath}>{filePath}</span>
-        {isDirty && <span className="spec-editor__dirty">modified</span>}
-        {saving && <span className="spec-editor__saving">saving…</span>}
-        {error && <span className="spec-editor__error" title={error}>error</span>}
+        {isDirty && <span className="spec-editor__dirty">Modified</span>}
+        {saving && <span className="spec-editor__saving">Saving…</span>}
+        {error && <span className="spec-editor__error" title={error}>Error</span>}
         <span className="spec-editor__spacer" />
         {diskChanged && !reloadConfirm && (
           <button
             className="header__btn spec-editor__reload"
             onClick={onReloadClick}
-            title="claude updated this file on disk — click to load the new version"
+            title="Claude updated this file on disk — click to load the new version"
           >
-            ↻ reload
+            ↻ Reload
           </button>
         )}
         {diskChanged && reloadConfirm && (
           <span className="spec-editor__reload-confirm">
-            <span>discard your changes?</span>
+            <span>Discard your changes?</span>
             <button className="header__btn" onClick={() => setReloadConfirm(false)}>
-              cancel
+              Cancel
             </button>
             <button className="header__btn header__btn--danger" onClick={reloadFromDisk}>
-              discard &amp; reload
+              Discard &amp; reload
             </button>
           </span>
         )}
@@ -149,14 +149,14 @@ export function SpecEditorPane({ filePath }: { filePath: string }) {
           className="header__btn"
           onClick={() => void save()}
           disabled={!isDirty || saving || loading}
-          title="save (⌘S)"
+          title="Save (⌘S)"
         >
-          save
+          Save
         </button>
       </div>
       <div className="spec-editor__body">
         {loading ? (
-          <div className="spec-editor__loading">loading…</div>
+          <div className="spec-editor__loading">Loading…</div>
         ) : (
           <SpecMilkdownEditor
             content={diskContent}

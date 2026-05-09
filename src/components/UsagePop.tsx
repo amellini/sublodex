@@ -10,11 +10,11 @@ export function UsagePop({ data }: Props) {
 
   // sessione corrente (5h)
   const w5h = data.windows['5h'];
-  if (w5h) rows.push({ label: 'sessione corrente', sub: '5h', pct: w5h.utilization, resetsAt: w5h.resetsAt });
+  if (w5h) rows.push({ label: 'Sessione corrente', sub: '5h', pct: w5h.utilization, resetsAt: w5h.resetsAt });
 
   // settimanale aggregato (7d)
   const w7d = data.windows['7d'];
-  if (w7d) rows.push({ label: 'settimanale · tutti i modelli', pct: w7d.utilization, resetsAt: w7d.resetsAt });
+  if (w7d) rows.push({ label: 'Settimanale · tutti i modelli', pct: w7d.utilization, resetsAt: w7d.resetsAt });
 
   // breakdown settimanale per modello (da weeklyBreakdown oppure windows 7d_*)
   if (data.weeklyBreakdown && data.weeklyBreakdown.length > 0) {
@@ -26,18 +26,18 @@ export function UsagePop({ data }: Props) {
       const w = data.windows[key];
       if (w && w.utilization > 0) {
         const name = key === '7d_opus' ? 'opus' : key === '7d_sonnet' ? 'sonnet' : 'haiku';
-        rows.push({ label: `settimanale · ${name}`, pct: w.utilization, resetsAt: w.resetsAt });
+        rows.push({ label: `Settimanale · ${name}`, pct: w.utilization, resetsAt: w.resetsAt });
       }
     }
   }
 
   if (rows.length === 0) {
-    return <div className="upop__empty">nessun dato disponibile</div>;
+    return <div className="upop__empty">Nessun dato disponibile</div>;
   }
 
   return (
     <div className="upop">
-      <div className="upop__head">utilizzo del piano</div>
+      <div className="upop__head">Utilizzo del piano</div>
       {rows.map((r, i) => <PopRow key={i} row={r} />)}
     </div>
   );

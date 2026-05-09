@@ -128,7 +128,7 @@ function Lightbox({
       <button
         className="lightbox__close"
         onClick={onClose}
-        aria-label="chiudi"
+        aria-label="Chiudi"
         type="button"
       >
         ✕
@@ -137,7 +137,7 @@ function Lightbox({
         <button
           className="lightbox__nav lightbox__nav--prev"
           onClick={(e) => { e.stopPropagation(); setIdx(idx - 1); }}
-          aria-label="precedente"
+          aria-label="Precedente"
           type="button"
         >
           ‹
@@ -147,7 +147,7 @@ function Lightbox({
         <button
           className="lightbox__nav lightbox__nav--next"
           onClick={(e) => { e.stopPropagation(); setIdx(idx + 1); }}
-          aria-label="successiva"
+          aria-label="Successiva"
           type="button"
         >
           ›

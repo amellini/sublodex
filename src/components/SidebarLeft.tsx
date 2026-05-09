@@ -26,19 +26,19 @@ export function SidebarLeft() {
               className={`sidebar__modetab ${effectiveMode === 'sessions' ? 'sidebar__modetab--active' : ''}`}
               onClick={() => setSidebarMode('sessions')}
             >
-              sessions
+              Sessions
             </button>
             <button
               className={`sidebar__modetab ${effectiveMode === 'openspec' ? 'sidebar__modetab--active' : ''}`}
               onClick={() => setSidebarMode('openspec')}
             >
-              openspec
+              Openspec
             </button>
           </div>
         ) : (
-          <span className="sidebar__title">sessions</span>
+          <span className="sidebar__title">Sessions</span>
         )}
-        <button className="sidebar__collapse" onClick={toggle} title="collapse">
+        <button className="sidebar__collapse" onClick={toggle} title="Collapse">
           ‹
         </button>
       </div>

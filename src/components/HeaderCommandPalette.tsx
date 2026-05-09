@@ -95,7 +95,7 @@ export function HeaderCommandPalette() {
           ref={inputRef}
           className="cmd-palette__bar-input"
           value={query}
-          placeholder={open ? 'type / to filter commands…' : 'Search commands…'}
+          placeholder={open ? 'Type / to filter commands…' : 'Search commands…'}
           onFocus={() => setOpen(true)}
           onChange={(e) => {
             setQuery(e.target.value);
@@ -112,7 +112,7 @@ export function HeaderCommandPalette() {
       {open && (
         <div className="cmd-palette__drop">
           {filtered.length === 0 && (
-            <div className="cmd-palette__empty">no commands match</div>
+            <div className="cmd-palette__empty">No commands match</div>
           )}
 
           {filtered.map((cmd, i) => {
@@ -169,7 +169,7 @@ export function HeaderCommandPalette() {
                             }
                             autoFocus
                           >
-                            <option value="">— choose —</option>
+                            <option value="">— Choose —</option>
                             {(arg.options ?? []).map((opt) => (
                               <option key={opt} value={opt}>{opt}</option>
                             ))}
@@ -208,7 +208,7 @@ export function HeaderCommandPalette() {
                           (a) => a.required && !values[a.name]?.trim(),
                         )}
                       >
-                        run
+                        Run
                       </button>
                     </div>
                   </div>

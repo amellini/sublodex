@@ -41,9 +41,9 @@ function buildHeaderMenuItems(args: {
     {
       kind: 'action',
       id: 'find',
-      label: 'find',
+      label: 'Find',
       icon: '🔍',
-      title: 'find file (⌘P or ⌘K)',
+      title: 'Find file (⌘P or ⌘K)',
       onClick: openQuickOpen,
     },
     // Export è condizionale: se non ci sono messaggi, l'azione è priva di senso.
@@ -52,9 +52,9 @@ function buildHeaderMenuItems(args: {
       ? {
           kind: 'action' as const,
           id: 'export',
-          label: 'export',
+          label: 'Export',
           icon: '⇣',
-          title: 'export conversation as markdown',
+          title: 'Export conversation as markdown',
           onClick: () => {
             const msgs = useStore.getState().messages;
             if (msgs.length === 0) return;
@@ -68,35 +68,35 @@ function buildHeaderMenuItems(args: {
     {
       kind: 'action',
       id: 'terminal',
-      label: terminalOpen ? 'close terminal' : 'terminal',
+      label: terminalOpen ? 'Close terminal' : 'Terminal',
       icon: '>_',
       active: terminalOpen,
-      title: terminalOpen ? 'close terminal' : 'open terminal in project root',
+      title: terminalOpen ? 'Close terminal' : 'Open terminal in project root',
       onClick: toggleTerminal,
     },
     {
       kind: 'action',
       id: 'extensions',
-      label: 'extensions',
+      label: 'Extensions',
       icon: '🔌',
-      title: 'installed plugins, MCP servers, hooks',
+      title: 'Installed plugins, MCP servers, hooks',
       onClick: openExtensions,
     },
     {
       kind: 'action',
       id: 'theme',
-      label: 'theme',
+      label: 'Theme',
       icon: '🎨',
-      title: 'theme',
+      title: 'Theme',
       onClick: openThemePicker,
     },
     { kind: 'divider' },
     {
       kind: 'action',
       id: 'projects',
-      label: 'projects',
+      label: 'Projects',
       icon: '📁',
-      title: 'manage projects & settings',
+      title: 'Manage projects & settings',
       onClick: openSettings,
     },
   ];
@@ -256,10 +256,10 @@ export default function App() {
         {sessionId && (
           <span className="header__session" title={sessionId}>{sessionId.slice(0, 8)}</span>
         )}
-        {isStreaming && <span className="header__working">claude is working…</span>}
+        {isStreaming && <span className="header__working">Claude is working…</span>}
         <span className="header__spacer" />
         <HeaderCommandPalette />
-        {lastError && <span className="header__error" title={lastError}>error</span>}
+        {lastError && <span className="header__error" title={lastError}>Error</span>}
         {messageCount > 0 && (
           <button
             className="header__btn"
@@ -273,9 +273,9 @@ export default function App() {
               }
             }}
             disabled={isStreaming}
-            title="start a new conversation alongside the current one"
+            title="Start a new conversation alongside the current one"
           >
-            new session
+            New session
           </button>
         )}
         <HeaderMenu items={buildHeaderMenuItems({

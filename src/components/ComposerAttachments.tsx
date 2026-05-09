@@ -32,7 +32,7 @@ export function ComposerAttachmentChip({
   const sizeKb = (att.file.size / 1024).toFixed(0);
   const tooltip =
     att.status === 'error'
-      ? att.errorMsg || 'errore upload'
+      ? att.errorMsg || 'Errore upload'
       : `${label} · ${sizeKb} KB · ${att.width}×${att.height}`;
 
   return (
@@ -48,8 +48,8 @@ export function ComposerAttachmentChip({
       <div className="composer-att__meta">
         <div className="composer-att__name">{label}</div>
         <div className="composer-att__sub">
-          {att.status === 'uploading' && 'caricamento…'}
-          {att.status === 'error' && (att.errorMsg || 'errore')}
+          {att.status === 'uploading' && 'Caricamento…'}
+          {att.status === 'error' && (att.errorMsg || 'Errore')}
           {att.status === 'done' && `${sizeKb} KB`}
           {att.status === 'idle' && `${sizeKb} KB`}
         </div>
@@ -57,7 +57,7 @@ export function ComposerAttachmentChip({
       <button
         className="composer-att__remove"
         onClick={onRemove}
-        title="rimuovi allegato"
+        title="Rimuovi allegato"
         type="button"
       >
         ✕

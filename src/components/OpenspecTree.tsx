@@ -147,46 +147,46 @@ export function OpenspecTree() {
       <div className="ftree__head">
         <input
           className="ftree__filter"
-          placeholder="filter… (e.g. proposal)"
+          placeholder="Filter… (e.g. proposal)"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
         <button
           className="ftree__refresh"
           onClick={() => setProposeOpen(true)}
-          title="new openspec proposal (/opsx:propose)"
+          title="New openspec proposal (/opsx:propose)"
         >
           <PlusIcon size={13} />
         </button>
         <button
           className="ftree__refresh"
           onClick={() => setArchivePickerOpen(true)}
-          title="archive changes (/opsx:archive)"
+          title="Archive changes (/opsx:archive)"
         >
           <ArchiveIcon size={13} />
         </button>
-        <button className="ftree__refresh" onClick={load} title="refresh">⟳</button>
+        <button className="ftree__refresh" onClick={load} title="Refresh">⟳</button>
       </div>
 
       {pending?.kind === 'archive-batch' && (
         <div className={`archive-picker__banner ${pending.awaitingSync ? 'archive-picker__banner--paused' : ''}`}>
           {pending.awaitingSync
-            ? <>paused on sync prompt for <strong>{pending.current}</strong> · answer the modal to continue</>
-            : <>archiving {pending.done}/{pending.total} · current: <strong>{pending.current}</strong></>
+            ? <>Paused on sync prompt for <strong>{pending.current}</strong> · answer the modal to continue</>
+            : <>Archiving {pending.done}/{pending.total} · current: <strong>{pending.current}</strong></>
           }
           {!pending.awaitingSync && pending.queue.length > 0 && (
             <span className="archive-picker__queue">
-              {' '}· queue: {pending.queue.join(', ')}
+              {' '}· Queue: {pending.queue.join(', ')}
             </span>
           )}
         </div>
       )}
 
       <div className="ftree__list">
-        {loading && <div className="ftree__msg">loading…</div>}
+        {loading && <div className="ftree__msg">Loading…</div>}
         {error && <div className="ftree__error">{error}</div>}
         {!loading && !error && data && filteredTree.length === 0 && (
-          <div className="ftree__msg">{filter ? 'no matches' : 'empty openspec/'}</div>
+          <div className="ftree__msg">{filter ? 'No matches' : 'Empty openspec/'}</div>
         )}
         {filteredTree.map((node) => (
           <NodeRow key={node.path} node={node} depth={0} />
@@ -260,9 +260,9 @@ const NodeRow = memo(function NodeRow({ node, depth }: { node: FileNode; depth: 
           </span>
           <span className="fnode__name">{node.name}</span>
           {isStreaming && <span className="fnode__live" />}
-          {isArchived && <span className="fnode__badge fnode__badge--archived">archived</span>}
+          {isArchived && <span className="fnode__badge fnode__badge--archived">Archived</span>}
           {isChange && isApplied && (
-            <span className="fnode__badge fnode__badge--applied" title="applied — use the archive picker (top of tree) to archive">applied</span>
+            <span className="fnode__badge fnode__badge--applied" title="Applied — use the archive picker (top of tree) to archive">Applied</span>
           )}
         </button>
         {regen && (
@@ -272,8 +272,8 @@ const NodeRow = memo(function NodeRow({ node, depth }: { node: FileNode; depth: 
             disabled={claudeBusy}
             title={
               claudeBusy
-                ? 'claude is busy — wait for the current response'
-                : `regenerate ${regen.target}.md from ${regen.target === 'design' ? 'proposal' : 'proposal + design'}`
+                ? 'Claude is busy — wait for the current response'
+                : `Regenerate ${regen.target}.md from ${regen.target === 'design' ? 'proposal' : 'proposal + design'}`
             }
           >
             <RegenIcon size={13} />
@@ -284,7 +284,7 @@ const NodeRow = memo(function NodeRow({ node, depth }: { node: FileNode; depth: 
             className="fnode__opsx fnode__opsx--apply"
             onClick={onApply}
             disabled={claudeBusy}
-            title={claudeBusy ? 'claude is busy' : 'apply this change (/opsx:apply)'}
+            title={claudeBusy ? 'Claude is busy' : 'Apply this change (/opsx:apply)'}
           >
             <CheckIcon size={13} />
           </button>

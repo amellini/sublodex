@@ -12,7 +12,7 @@ export function Message({ message }: { message: UIMessage }) {
   if (message.role === 'system') {
     return (
       <div className="msg msg--system">
-        <div className="msg__role">system</div>
+        <div className="msg__role">System</div>
         <div className="msg__body">
           {message.blocks.map((block, i) => {
             if (block.kind === 'text') {
@@ -30,7 +30,7 @@ export function Message({ message }: { message: UIMessage }) {
 
   return (
     <div className={`msg msg--${message.role}`}>
-      <div className="msg__role">{message.role === 'user' ? 'you' : 'claude'}</div>
+      <div className="msg__role">{message.role === 'user' ? 'You' : 'Claude'}</div>
       <div className="msg__body">
         {/* Allegati immagine: solo lato user. Renderizzati PRIMA del testo
             così l'utente vede il contesto visivo del messaggio. Il path

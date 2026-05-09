@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { Conversation } from './Conversation';
 import { Composer } from './Composer';
+import { PermissionPrompt } from './PermissionPrompt';
 import { SpecEditorPane } from './SpecEditorPane';
 import { useUI, SESSION_TAB_ID, centerTabId } from '../lib/ui';
 import { useScopedTheme } from './ThemeApplier';
@@ -33,8 +34,8 @@ export function CenterPane() {
             if (t.kind === 'session') {
               return (
                 <div key={id} className={`tab ${active ? 'tab--active' : ''}`}>
-                  <button className="tab__select" onClick={() => setActive(id)} title="chat session">
-                    <span className="tab__name">session</span>
+                  <button className="tab__select" onClick={() => setActive(id)} title="Chat session">
+                    <span className="tab__name">Session</span>
                   </button>
                 </div>
               );
@@ -48,7 +49,7 @@ export function CenterPane() {
                 <button
                   className="tab__close"
                   onClick={(e) => { e.stopPropagation(); closeSpecTab(t.path); }}
-                  title="close"
+                  title="Close"
                 >
                   ✕
                 </button>
@@ -62,6 +63,7 @@ export function CenterPane() {
           interrompere lo streaming di Claude e preservare lo stato del Composer. */}
       <div className="center__pane" style={{ display: activeId === SESSION_TAB_ID ? 'flex' : 'none' }}>
         <Conversation />
+        <PermissionPrompt />
         <Composer />
       </div>
 

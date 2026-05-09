@@ -79,10 +79,10 @@ export function Editor() {
   if (openFiles.length === 0) {
     return (
       <aside className="editor" ref={ref}>
-        <div className="editor__tabs editor__tabs--empty">no files open</div>
+        <div className="editor__tabs editor__tabs--empty">No files open</div>
         <div className="editor__placeholder">
-          <div>the editor opens automatically</div>
-          <div className="editor__placeholder-sub">when claude reads or writes a file</div>
+          <div>The editor opens automatically</div>
+          <div className="editor__placeholder-sub">When claude reads or writes a file</div>
         </div>
       </aside>
     );
@@ -127,7 +127,7 @@ function Tab({ path, active, onSelect, onClose }: {
       <button
         className="tab__close"
         onClick={(e) => { e.stopPropagation(); onClose(); }}
-        title="close"
+        title="Close"
       >
         ✕
       </button>
@@ -240,16 +240,16 @@ function EditorPane({ filePath }: { filePath: string }) {
   })();
 
   const status = loading
-    ? 'loading…'
+    ? 'Loading…'
     : isDiff
-    ? `diff · ${diffLabel}`
+    ? `Diff · ${diffLabel}`
     : isStreaming
-    ? 'claude is writing…'
+    ? 'Claude is writing…'
     : savedFlash
-    ? '✓ saved'
+    ? '✓ Saved'
     : dirty
-    ? 'modified · ⌘S to save'
-    : 'ready';
+    ? 'Modified · ⌘S to save'
+    : 'Ready';
 
   const headPath = (() => {
     if (!isDiff || !diffInfo) return filePath;
@@ -270,7 +270,7 @@ function EditorPane({ filePath }: { filePath: string }) {
         </span>
         {!isStreaming && !isDiff && (
           <button className="header__btn" onClick={save} disabled={loading || !dirty}>
-            save
+            Save
           </button>
         )}
       </div>

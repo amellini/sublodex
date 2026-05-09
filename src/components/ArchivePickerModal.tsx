@@ -120,18 +120,18 @@ export function ArchivePickerModal({ onClose }: { onClose: () => void }) {
         tabIndex={-1}
       >
         <div className="modal__head">
-          <h3 className="modal__title">archive changes</h3>
+          <h3 className="modal__title">Archive changes</h3>
           <span className="modal__spacer" />
-          <button className="header__btn" onClick={onClose} title="close">✕</button>
+          <button className="header__btn" onClick={onClose} title="Close">✕</button>
         </div>
 
         <div className="modal__body">
           {!changes && !loadError && (
-            <div className="ftree__msg">loading changes…</div>
+            <div className="ftree__msg">Loading changes…</div>
           )}
           {loadError && (
             <div className="modal__error">
-              <strong>openspec list failed:</strong>
+              <strong>Openspec list failed:</strong>
               <pre style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap', fontSize: 11 }}>{loadError}</pre>
               <p style={{ margin: '6px 0 0', fontSize: 11, opacity: 0.8 }}>
                 Make sure the <code>openspec</code> CLI is on PATH and the project has an <code>openspec/</code> dir.
@@ -139,7 +139,7 @@ export function ArchivePickerModal({ onClose }: { onClose: () => void }) {
             </div>
           )}
           {changes && changes.length === 0 && !loadError && (
-            <div className="ftree__msg">no active changes — nothing to archive</div>
+            <div className="ftree__msg">No active changes — nothing to archive</div>
           )}
           {changes && changes.length > 0 && (
             <div className="archive-picker__list">
@@ -176,7 +176,7 @@ export function ArchivePickerModal({ onClose }: { onClose: () => void }) {
                 onChange={(e) => setAutoSync(e.target.checked)}
               />
               <span className="archive-picker__autosync-label">
-                <strong>auto-sync delta specs</strong>
+                <strong>Auto-sync delta specs</strong>
                 <span className="archive-picker__autosync-hint">
                   Claude pre-conferma "Sync now" senza fermarsi. Lascia spuntato
                   per archiviare in serie senza interventi manuali.
@@ -192,20 +192,20 @@ export function ArchivePickerModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="modal__foot">
-          <button className="header__btn" onClick={onClose}>cancel</button>
+          <button className="header__btn" onClick={onClose}>Cancel</button>
           <button
             className="composer__send"
             onClick={submit}
             disabled={!canSubmit}
             title={
               claudeBusy
-                ? 'claude is busy — wait for the current response'
+                ? 'Claude is busy — wait for the current response'
                 : selected.size === 0
-                  ? 'select at least one change'
-                  : `archive ${selected.size} change${selected.size === 1 ? '' : 's'} sequentially`
+                  ? 'Select at least one change'
+                  : `Archive ${selected.size} change${selected.size === 1 ? '' : 's'} sequentially`
             }
           >
-            archive {selected.size > 0 ? `(${selected.size})` : ''}
+            Archive {selected.size > 0 ? `(${selected.size})` : ''}
           </button>
         </div>
       </div>

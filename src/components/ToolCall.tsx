@@ -2,6 +2,8 @@ import { useState } from 'react';
 import type { UIBlock } from '../lib/types';
 import { useStore } from '../lib/store';
 import { useUI } from '../lib/ui';
+import { PlanCard } from './PlanCard';
+import { QuestionCard } from './QuestionCard';
 
 type ToolBlock = Extract<UIBlock, { kind: 'tool' }>;
 type Variant = 'read' | 'edit' | 'bash' | 'search' | 'web' | 'task' | 'default';
@@ -22,6 +24,12 @@ const ICON: Record<Variant, string> = {
 };
 
 export function ToolCall({ block }: { block: ToolBlock }) {
+  if (block.name === 'ExitPlanMode') return <PlanCard block={block} />;
+  if (block.name === 'AskUserQuestion') return <QuestionCard block={block} />;
+  return <GenericToolCall block={block} />;
+}
+
+function GenericToolCall({ block }: { block: ToolBlock }) {
   const hasError = !!block.result?.isError;
   const [open, setOpen] = useState(false);
   const setActiveFile = useStore((s) => s.setActiveFile);
@@ -47,7 +55,7 @@ export function ToolCall({ block }: { block: ToolBlock }) {
         <span className="tool__icon">{ICON[variant]}</span>
         <span className="tool__name">{block.name}</span>
         {filePath ? (
-          <button className="tool__path tool__path--link" onClick={onPathClick} title="open in editor">
+          <button className="tool__path tool__path--link" onClick={onPathClick} title="Open in editor">
             {shortPath(filePath)}
           </button>
         ) : headlineText ? (
@@ -58,7 +66,7 @@ export function ToolCall({ block }: { block: ToolBlock }) {
           {block.pending ? (
             <span className="tool__pending" />
           ) : block.result?.isError ? (
-            <span className="tool__err">error</span>
+            <span className="tool__err">Error</span>
           ) : (
             <span className="tool__chev">›</span>
           )}
@@ -130,7 +138,7 @@ function EditBody({ block }: { block: ToolBlock }) {
   return (
     <div>
       {block.name === 'Write' ? (
-        <div className="tool__hint">new file · preview in the editor →</div>
+        <div className="tool__hint">New file · preview in the editor →</div>
       ) : (
         <div className="tool__diff">
           {hunks.map((h, i) => (
@@ -161,7 +169,7 @@ function BashBody({ block }: { block: ToolBlock }) {
 }
 
 function ReadBody({ block }: { block: ToolBlock }) {
-  return <div className="tool__hint">opened in the editor →</div>;
+  return <div className="tool__hint">Opened in the editor →</div>;
 }
 
 function SearchBody({ block }: { block: ToolBlock }) {

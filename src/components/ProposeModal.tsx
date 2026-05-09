@@ -57,17 +57,17 @@ export function ProposeModal({ onClose }: { onClose: () => void }) {
         aria-modal="true"
       >
         <div className="modal__head">
-          <h3 className="modal__title">new openspec proposal</h3>
+          <h3 className="modal__title">New openspec proposal</h3>
           <span className="modal__spacer" />
-          <button className="header__btn" onClick={onClose} title="close">✕</button>
+          <button className="header__btn" onClick={onClose} title="Close">✕</button>
         </div>
         <div className="modal__body">
           <div className="field">
-            <label className="field__label">name</label>
+            <label className="field__label">Name</label>
             <input
               ref={nameRef}
               className="field__input"
-              placeholder="kebab-case slug, e.g. add-export-csv"
+              placeholder="Kebab-case slug, e.g. add-export-csv"
               value={name}
               onChange={(e) => setName(e.target.value)}
               autoComplete="off"
@@ -75,15 +75,15 @@ export function ProposeModal({ onClose }: { onClose: () => void }) {
             />
             {nameInvalid && (
               <span className="modal__hint" style={{ color: 'var(--red)' }}>
-                no spaces — use kebab-case or snake_case
+                No spaces — use kebab-case or snake_case
               </span>
             )}
           </div>
           <div className="field">
-            <label className="field__label">context</label>
+            <label className="field__label">Context</label>
             <textarea
               className="field__textarea"
-              placeholder="describe what should change and why (min 10 chars)"
+              placeholder="Describe what should change and why (min 10 chars)"
               value={context}
               onChange={(e) => setContext(e.target.value)}
               rows={8}
@@ -94,20 +94,20 @@ export function ProposeModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
         <div className="modal__foot">
-          <button className="header__btn" onClick={onClose}>cancel</button>
+          <button className="header__btn" onClick={onClose}>Cancel</button>
           <button
             className="composer__send"
             onClick={submit}
             disabled={!canSubmit}
             title={
               claudeBusy
-                ? 'claude is busy — wait for the current response'
+                ? 'Claude is busy — wait for the current response'
                 : !canSubmit
-                  ? 'fill name (no spaces) and at least 10 chars of context'
-                  : 'send /opsx:propose'
+                  ? 'Fill name (no spaces) and at least 10 chars of context'
+                  : 'Send /opsx:propose'
             }
           >
-            propose
+            Propose
           </button>
         </div>
       </div>

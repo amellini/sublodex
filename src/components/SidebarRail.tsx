@@ -23,7 +23,7 @@ export function SidebarRail() {
       <button
         className="rail__item rail__item--sessions"
         onClick={() => open('sessions')}
-        title="expand sessions"
+        title="Expand sessions"
       >
         <MessagesIcon size={18} />
       </button>
